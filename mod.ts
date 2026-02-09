@@ -66,14 +66,15 @@ type Job = {
     relationship: string[];
     configFile: string;
     buildsFolder: string | null;
-    triggers: string[] | null;
+    triggers: string[][] | null;
 };
 
 type JobLeaf = {
+    uuid: string;
     name: string;
     configFile: string;
     buildsFolder: string | null;
-    triggers: string[] | null;
+    triggers: string[][] | null;
     children: JobLeaf[];
 };
 
@@ -90,7 +91,7 @@ function formatRelationship(root: string, path: string): string[] {
     return ret;
 }
 
-function yank<T>(array: T[], filter: (x: T) => boolean): T[] {
+function takeWhere<T>(array: T[], filter: (x: T) => boolean): T[] {
     const ret = [];
     let i = 0;
     while (i < array.length) {
@@ -103,12 +104,58 @@ function yank<T>(array: T[], filter: (x: T) => boolean): T[] {
     return ret;
 }
 
+function findParent(
+    jobs: JobLeaf[],
+    leaf: JobLeaf,
+): JobLeaf {
+    function findParentInner(
+        jobs: JobLeaf[],
+        leaf: JobLeaf,
+    ): JobLeaf | undefined {
+        for (const job of jobs) {
+            if (job.children.find((x) => x.uuid === leaf.uuid)) {
+                return job;
+            }
+            const descendant = findParentInner(job.children, leaf);
+            if (descendant) {
+                return descendant;
+            }
+        }
+        return undefined;
+    }
+    const parent = findParentInner(jobs, leaf);
+    if (!parent) {
+        throw new Error(`leaf ${leaf.name} (${leaf.uuid}) has no parent`);
+    }
+    return parent;
+}
+
+function findRelative(
+    jobs: JobLeaf[],
+    leaf: JobLeaf,
+    components: string[],
+): JobLeaf {
+    const [head, ...rest] = components;
+    if (head === "..") {
+        return findRelative(jobs, findParent(jobs, leaf), rest);
+    }
+    const next = leaf.children.find((x) => x.name === head);
+    if (!next) {
+        throw new Error(
+            `got '${head}' in ${components}, but '${head}' not in ${
+                leaf.children.map((x) => x.name)
+            }`,
+        );
+    }
+    return findRelative(jobs, next, rest);
+}
+
 function buildJobTree(jobs: Job[]): JobLeaf[] {
     const ret: JobLeaf[] = [];
-    const roots = yank(jobs, (x) => x.relationship.length === 1);
+    const roots = takeWhere(jobs, (x) => x.relationship.length === 1);
     const rest = jobs;
     for (const root of roots) {
-        const children = yank(
+        const children = takeWhere(
             rest,
             (x) => x.relationship[0] === root.relationship[0],
         ).map((x) => {
@@ -117,6 +164,7 @@ function buildJobTree(jobs: Job[]): JobLeaf[] {
         });
         const childrenTree = buildJobTree(children);
         ret.push({
+            uuid: crypto.randomUUID(),
             name: root.relationship[0],
             children: childrenTree,
             buildsFolder: root.buildsFolder,
