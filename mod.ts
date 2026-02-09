@@ -63,9 +63,18 @@ const Job = z.object({
 });
 
 type Job = {
+    relationship: string[];
     configFile: string;
     buildsFolder: string | null;
     triggers: string[] | null;
+};
+
+type JobLeaf = {
+    name: string;
+    configFile: string;
+    buildsFolder: string | null;
+    triggers: string[] | null;
+    children: JobLeaf[];
 };
 
 function formatRelationship(root: string, path: string): string[] {
@@ -77,6 +86,43 @@ function formatRelationship(root: string, path: string): string[] {
         }
         i += 1;
         ret.push(split[i]);
+    }
+    return ret;
+}
+
+function yank<T>(array: T[], filter: (x: T) => boolean): T[] {
+    const ret = [];
+    let i = 0;
+    while (i < array.length) {
+        if (filter(array[i])) {
+            ret.push(...array.splice(i, 1));
+        } else {
+            i += 1;
+        }
+    }
+    return ret;
+}
+
+function buildJobTree(jobs: Job[]): JobLeaf[] {
+    const ret: JobLeaf[] = [];
+    const roots = yank(jobs, (x) => x.relationship.length === 1);
+    const rest = jobs;
+    for (const root of roots) {
+        const children = yank(
+            rest,
+            (x) => x.relationship[0] === root.relationship[0],
+        ).map((x) => {
+            x.relationship.shift();
+            return x;
+        });
+        const childrenTree = buildJobTree(children);
+        ret.push({
+            name: root.relationship[0],
+            children: childrenTree,
+            buildsFolder: root.buildsFolder,
+            configFile: root.configFile,
+            triggers: root.triggers,
+        });
     }
     return ret;
 }
@@ -93,7 +139,7 @@ async function findJobs(root: string): Promise<Job[]> {
         })
     ) {
         const dat = xml.parse(await Deno.readTextFile(path));
-        let triggers: string[] | null = null;
+        let triggers: string[][] | null = null;
         {
             const parsed = Job.parse(dat);
             triggers = parsed.project
@@ -102,7 +148,8 @@ async function findJobs(root: string): Promise<Job[]> {
                 ?.configs[
                     "hudson.plugins.parameterizedtrigger.BuildTriggerConfig"
                 ].projects
-                ?.split(",") ?? null;
+                ?.split(",")
+                ?.map((x) => x.split("/")) ?? null;
         }
         let buildsFolder: string | null = null;
         {
@@ -131,8 +178,8 @@ export async function buildTree(root: string) {
     if (!root.endsWith("/")) {
         root += "/";
     }
-    const x = await findJobs(root);
-    console.log(x);
+    const x = buildJobTree(await findJobs(root));
+    console.dir(x);
 }
 
 if (import.meta.main) {
