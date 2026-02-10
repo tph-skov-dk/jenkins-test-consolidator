@@ -16,34 +16,36 @@ import * as pathTools from "@std/path";
 import * as z from "zod";
 import * as xml from "@libs/xml";
 
-const jobConfigFilesPattern = /jobs\/[^/]+\/config\.xml$/;
-
-const TestBaseCase = z.object({
+const JunitXmlTestBaseCase = z.object({
     duration: z.coerce.number(),
     testName: z.string(),
     skipped: z.coerce.boolean(),
 });
 
-const TestSuccessCase = TestBaseCase.extend({
+const JunitXmlTestSuccessCase = JunitXmlTestBaseCase.extend({
     errorStackTrace: z.undefined(),
     errorDetails: z.undefined(),
 });
 
-const TestFailureCase = TestBaseCase.extend({
+const JunitXmlTestFailureCase = JunitXmlTestBaseCase.extend({
     errorStackTrace: z.string(),
     errorDetails: z.string(),
 });
 
-const TestCase = TestSuccessCase.or(TestFailureCase);
+const JunitXmlTestCase = JunitXmlTestSuccessCase.or(JunitXmlTestFailureCase);
 
-const Suite = z.object({
+const JunitXmlSuite = z.object({
     duration: z.coerce.number(),
-    cases: z.object({ case: z.array(TestCase).or(TestCase) }),
+    cases: z.object({
+        case: z.array(JunitXmlTestCase).or(
+            JunitXmlTestCase.transform((x) => [x]),
+        ),
+    }),
 });
 
-const JunitResultXml = z.object({
+const JunitXmlResult = z.object({
     result: z.object({
-        suites: z.object({ suite: Suite }),
+        suites: z.object({ suite: JunitXmlSuite }),
     }),
 });
 
@@ -83,6 +85,15 @@ const ConfigXml = z.object({
             }).nullish(),
         }).nullish(),
     }).nullish(),
+}).transform((x) => {
+    return {
+        triggers: x.project
+            ?.publishers
+            ?.["hudson.plugins.parameterizedtrigger.BuildTrigger"]
+            ?.configs["hudson.plugins.parameterizedtrigger.BuildTriggerConfig"]
+            .projects.split(",")
+            .map((x) => x.split("/")) ?? [],
+    };
 });
 
 type TestCase =
@@ -223,130 +234,139 @@ function buildJobTree(jobs: Job[]): JobLeaf[] {
     return ret;
 }
 
-async function findJobs(root: string): Promise<Job[]> {
+function buildIterationFromPath(path: string): string {
+    const buildIterationMatch = path.match(
+        /\/(\d+)\/build.xml$/,
+    );
+    if (!buildIterationMatch) {
+        throw new Error(
+            `'${path}' does not follow pattern '/\\d+/build.xml'`,
+        );
+    }
+    return buildIterationMatch[1];
+}
+
+async function testCasesFromJunitXmlPath(
+    junitXmlPath: string,
+): Promise<TestCase[]> {
+    let junitTestCases: (z.infer<typeof JunitXmlTestCase>)[];
+    try {
+        const junitResult = JunitXmlResult.parse(
+            xml.parse(await Deno.readTextFile(junitXmlPath)),
+        );
+        junitTestCases = junitResult.result.suites.suite.cases.case;
+    } catch (err) {
+        if (!(err instanceof Deno.errors.NotFound)) {
+            throw err;
+        }
+        return [];
+    }
+
+    return junitTestCases.map((testCase): TestCase => {
+        if (testCase.errorDetails === undefined) {
+            return {
+                ...testCase,
+                success: true,
+            };
+        }
+        return {
+            ...testCase,
+            success: false,
+            error: {
+                stackTrace: testCase.errorStackTrace,
+                details: testCase.errorDetails,
+            },
+        };
+    });
+}
+
+async function buildFromBuildXmlPath(buildXmlPath: string) {
+    console.log(buildXmlPath);
+    const parsed = BuildFileXml.parse(
+        xml.parse(await Deno.readTextFile(buildXmlPath)),
+    );
+
+    const parsedBuild = parsed["build"] ?? parsed["matrix-build"];
+    const cause = parsedBuild.actions["hudson.model.CauseAction"]
+        .causeBag
+        .entry["hudson.model.Cause_-UpstreamCause"];
+
+    let tests: TestCase[] = [];
+    try {
+        const junitXmlPath = pathTools.join(
+            pathTools.dirname(buildXmlPath),
+            "junitResult.xml",
+        );
+        tests = await testCasesFromJunitXmlPath(junitXmlPath);
+    } catch (err) {
+        if (!(err instanceof Deno.errors.NotFound)) {
+            throw err;
+        }
+    }
+
+    return {
+        iteration: buildIterationFromPath(buildXmlPath),
+        build: {
+            upstream: cause
+                ? {
+                    build: cause.upstreamBuild,
+                    project: cause.upstreamProject,
+                }
+                : null,
+            result: parsedBuild.result,
+            tests,
+        },
+    };
+}
+
+async function jobFromConfigXmlPath(
+    root: string,
+    configXmlPath: string,
+): Promise<Job> {
+    const parsed = ConfigXml.parse(
+        xml.parse(await Deno.readTextFile(configXmlPath)),
+    );
+    const builds: Job["builds"] = {};
+    for await (
+        const { path: buildXmlPath } of fs.walk(
+            pathTools.dirname(configXmlPath),
+            {
+                includeDirs: false,
+                includeSymlinks: false,
+                match: [/builds\/\d+\/build\.xml$/],
+                maxDepth: 3,
+            },
+        )
+    ) {
+        const { iteration, build } = await buildFromBuildXmlPath(
+            buildXmlPath,
+        );
+        builds[iteration] = build;
+    }
+
+    return {
+        relationship: formatRelationship(
+            root,
+            pathTools.dirname(configXmlPath),
+        ),
+        configFile: configXmlPath,
+        builds,
+        triggers: parsed.triggers,
+    };
+}
+
+async function parseJobs(root: string): Promise<Job[]> {
     const jobs: Job[] = [];
     for await (
-        const entry of fs.walk(root, {
-            match: [jobConfigFilesPattern],
+        const { path } of fs.walk(root, {
+            match: [/jobs\/[^/]+\/config\.xml$/],
             skip: [/jobs\/Discontinued/],
             includeDirs: false,
             includeSymlinks: false,
             includeFiles: true,
         })
     ) {
-        const parsed = ConfigXml.parse(
-            xml.parse(await Deno.readTextFile(entry.path)),
-        );
-        const triggers = parsed.project
-            ?.publishers
-            ?.["hudson.plugins.parameterizedtrigger.BuildTrigger"]
-            ?.configs[
-                "hudson.plugins.parameterizedtrigger.BuildTriggerConfig"
-            ].projects
-            ?.split(",")
-            ?.map((x) => x.split("/")) ?? [];
-        const builds: Job["builds"] = {};
-        {
-            const parsed = pathTools.parse(entry.path);
-            const formatted = pathTools.format({
-                dir: parsed.dir,
-                name: "builds",
-            });
-            try {
-                for await (
-                    const entry of fs.walk(formatted, {
-                        includeDirs: false,
-                        includeSymlinks: false,
-                        match: [/build\.xml/],
-                    })
-                ) {
-                    const buildIterationMatch = entry.path.match(
-                        /\/(\d+)\/build.xml$/,
-                    );
-                    if (!buildIterationMatch) {
-                        throw new Error(
-                            `'${entry.path}' does not follow pattern '/\\d+/build.xml'`,
-                        );
-                    }
-                    const buildIteration = buildIterationMatch[1];
-                    console.log(entry.path);
-                    const parsed = BuildFileXml.parse(
-                        xml.parse(await Deno.readTextFile(entry.path)),
-                    );
-
-                    let tests: TestCase[] = [];
-                    try {
-                        const junitPath = pathTools.join(
-                            pathTools.dirname(entry.path),
-                            "junitResult.xml",
-                        );
-                        const parsedJunit = JunitResultXml.parse(
-                            xml.parse(await Deno.readTextFile(junitPath)),
-                        );
-                        console.log(parsedJunit);
-                        const cases = [
-                            parsedJunit.result.suites.suite.cases.case,
-                        ].flat();
-                        tests = cases.map(
-                            (x): TestCase => {
-                                if (x.errorDetails === undefined) {
-                                    return {
-                                        skipped: x.skipped,
-                                        duration: x.duration,
-                                        success: true,
-                                        testName: x.testName,
-                                    };
-                                } else {
-                                    return {
-                                        skipped: x.skipped,
-                                        duration: x.duration,
-                                        success: false,
-                                        testName: x.testName,
-                                        error: {
-                                            stackTrace: x.errorStackTrace,
-                                            details: x.errorDetails,
-                                        },
-                                    };
-                                }
-                            },
-                        );
-                    } catch (err) {
-                        if (!(err instanceof Deno.errors.NotFound)) {
-                            throw err;
-                        }
-                    }
-
-                    const build = parsed["build"] ?? parsed["matrix-build"];
-                    const cause = build.actions["hudson.model.CauseAction"]
-                        .causeBag
-                        .entry["hudson.model.Cause_-UpstreamCause"];
-                    builds[buildIteration] = {
-                        upstream: cause
-                            ? {
-                                build: cause.upstreamBuild,
-                                project: cause.upstreamProject,
-                            }
-                            : null,
-                        result: build.result,
-                        tests,
-                    };
-                }
-            } catch (err) {
-                if (!(err instanceof Deno.errors.NotFound)) {
-                    throw err;
-                }
-            }
-        }
-
-        jobs.push({
-            relationship: formatRelationship(
-                root,
-                pathTools.dirname(entry.path),
-            ),
-            configFile: entry.path,
-            builds,
-            triggers,
-        });
+        jobs.push(await jobFromConfigXmlPath(root, path));
     }
     return jobs;
 }
@@ -355,21 +375,7 @@ export async function buildTree(root: string) {
     if (!root.endsWith("/")) {
         root += "/";
     }
-    const x = await findJobs(root);
-    for (let i = 0; i < x.length; ++i) {
-        if (Object.keys(x[i].builds).length === 0) {
-            continue;
-        }
-
-        if (
-            !Object.keys(x[i].builds).some((key) =>
-                x[i].builds[key].tests.length !== 0
-            )
-        ) {
-            continue;
-        }
-        console.dir(x[i].builds);
-    }
+    return buildJobTree(await parseJobs(root));
 }
 
 if (import.meta.main) {
