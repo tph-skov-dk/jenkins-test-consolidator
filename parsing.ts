@@ -102,7 +102,7 @@ export type Build = {
     result: "success" | "aborted" | "failed";
     upstream: {
         project: string[];
-        build: string;
+        iteration: string;
     } | null;
     tests: TestCase[];
 };
@@ -209,7 +209,7 @@ async function buildFromBuildXmlPath(
         build: {
             upstream: cause !== undefined
                 ? {
-                    build: cause.upstreamBuild,
+                    iteration: cause.upstreamBuild,
                     project: cause.upstreamProject.split(/[\\/]/),
                 }
                 : null,

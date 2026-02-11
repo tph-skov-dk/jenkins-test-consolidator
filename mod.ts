@@ -6,7 +6,7 @@ function debug(children: JobLeaf[]) {
         if (item.name.startsWith("Labgrid")) {
             for (const iteration in item.builds) {
                 const build = item.builds[iteration];
-                console.log(build.upstream);
+                console.log(build.downstream);
             }
         }
         debug(item.children);

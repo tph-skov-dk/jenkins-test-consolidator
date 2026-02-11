@@ -1,8 +1,27 @@
-import { Build, Job } from "./parsing.ts";
+import { Build as UnresolvedBuild, Job } from "./parsing.ts";
 
-export type RootLeaf = {
+type Replace<T, K extends keyof T, S> = Omit<T, K> & S;
+
+export type Build = Replace<UnresolvedBuild, "upstream", {
+    downstream: {
+        project: string[];
+        iteration: string;
+    }[];
+}>;
+
+type UnresolvedJobLeaf = {
+    root: false;
+    uuid: string;
+    name: string;
+    configFile: string;
+    builds: { [key: string]: UnresolvedBuild };
+    triggers: string[][];
+    children: UnresolvedJobLeaf[];
+};
+
+export type Root<T> = {
     root: true;
-    children: JobLeaf[];
+    children: T[];
 };
 
 export type JobLeaf = {
@@ -29,13 +48,13 @@ function takeWhere<T>(array: T[], filter: (x: T) => boolean): T[] {
 }
 
 function findParent(
-    root: RootLeaf,
-    target: JobLeaf,
-): JobLeaf | RootLeaf {
+    root: Root<UnresolvedJobLeaf>,
+    target: UnresolvedJobLeaf,
+): UnresolvedJobLeaf | Root<UnresolvedJobLeaf> {
     function inner(
-        root: RootLeaf | JobLeaf,
-        src: JobLeaf,
-    ): JobLeaf | RootLeaf | undefined {
+        root: Root<UnresolvedJobLeaf> | UnresolvedJobLeaf,
+        src: UnresolvedJobLeaf,
+    ): UnresolvedJobLeaf | Root<UnresolvedJobLeaf> | undefined {
         if (root.children.find((x) => x.uuid === src.uuid)) {
             return root;
         }
@@ -56,15 +75,15 @@ function findParent(
 }
 
 function findRelative(
-    root: RootLeaf,
-    initial: JobLeaf,
+    root: Root<UnresolvedJobLeaf>,
+    initial: UnresolvedJobLeaf,
     components: string[],
-): JobLeaf {
+): UnresolvedJobLeaf {
     function inner(
-        root: RootLeaf,
-        leaf: RootLeaf | JobLeaf,
+        root: Root<UnresolvedJobLeaf>,
+        leaf: Root<UnresolvedJobLeaf> | UnresolvedJobLeaf,
         components: string[],
-    ): JobLeaf | undefined {
+    ): UnresolvedJobLeaf | undefined {
         const [head, ...rest] = components;
         if (head === "..") {
             if (leaf.root) {
@@ -94,12 +113,12 @@ function findRelative(
 }
 
 export function findElement(
-    root: RootLeaf,
+    root: Root<JobLeaf>,
     components: string[],
 ): JobLeaf {
     function inner(
-        root: RootLeaf,
-        leaf: RootLeaf | JobLeaf,
+        root: Root<JobLeaf>,
+        leaf: Root<JobLeaf> | JobLeaf,
         components: string[],
     ): JobLeaf | undefined {
         const [head, ...rest] = components;
@@ -125,12 +144,12 @@ export function findElement(
 }
 
 function absolutePath(
-    root: RootLeaf,
-    leaf: JobLeaf,
+    root: Root<UnresolvedJobLeaf>,
+    leaf: UnresolvedJobLeaf,
 ): string[] {
     function inner(
-        jobs: JobLeaf[],
-        leaf: JobLeaf,
+        jobs: UnresolvedJobLeaf[],
+        leaf: UnresolvedJobLeaf,
         parents: string[],
     ): string[] | undefined {
         for (const job of jobs) {
@@ -154,8 +173,13 @@ function absolutePath(
     }
     return path;
 }
-function resolveTestPaths(root: RootLeaf): RootLeaf {
-    function inner(root: RootLeaf, current: JobLeaf): JobLeaf {
+function absoluteTestPaths(
+    root: Root<UnresolvedJobLeaf>,
+): Root<UnresolvedJobLeaf> {
+    function inner(
+        root: Root<UnresolvedJobLeaf>,
+        current: UnresolvedJobLeaf,
+    ): UnresolvedJobLeaf {
         const ret = structuredClone(current);
         for (const buildIteration in ret.builds) {
             const build = ret.builds[buildIteration];
@@ -176,9 +200,37 @@ function resolveTestPaths(root: RootLeaf): RootLeaf {
     return { ...root, children: root.children.map((x) => inner(root, x)) };
 }
 
-function buildJobTree(jobs: Job[]): RootLeaf {
-    function inner(jobs: Job[]): JobLeaf[] {
-        const ret: JobLeaf[] = [];
+function reverseTestPathDirection(
+    root: Root<UnresolvedJobLeaf>,
+): Root<JobLeaf> {
+    function inner(
+        root: Root<UnresolvedJobLeaf>,
+        current: UnresolvedJobLeaf,
+    ): UnresolvedJobLeaf {
+        const ret = structuredClone(current);
+        for (const buildIteration in ret.builds) {
+            const build = ret.builds[buildIteration];
+            if (build.upstream === null) {
+                continue;
+            }
+            build.upstream.project = absolutePath(
+                root,
+                findRelative(
+                    root,
+                    current,
+                    build.upstream.project,
+                ),
+            );
+        }
+        return ret;
+    }
+    const _x = { ...root, children: root.children.map((x) => inner(root, x)) };
+    throw new Error("unimpl");
+}
+
+function buildJobTree(jobs: Job[]): Root<UnresolvedJobLeaf> {
+    function inner(jobs: Job[]): UnresolvedJobLeaf[] {
+        const ret: UnresolvedJobLeaf[] = [];
         const roots = takeWhere(jobs, (x) => x.relationship.length === 1);
         const rest = jobs;
         for (const root of roots) {
@@ -205,6 +257,6 @@ function buildJobTree(jobs: Job[]): RootLeaf {
     return { root: true, children: inner(jobs) };
 }
 
-export function buildTree(jobs: Job[]): RootLeaf {
-    return resolveTestPaths(buildJobTree(jobs));
+export function buildTree(jobs: Job[]): Root<JobLeaf> {
+    return reverseTestPathDirection(absoluteTestPaths(buildJobTree(jobs)));
 }

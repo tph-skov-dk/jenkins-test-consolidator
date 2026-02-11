@@ -1,6 +1,5 @@
 import { escape } from "node:querystring";
-import { Build } from "./parsing.ts";
-import { JobLeaf, RootLeaf } from "./tree.ts";
+import { findElement, JobLeaf, Root } from "./tree.ts";
 
 function rootHtml(name: string, body: string) {
     return `
@@ -71,6 +70,21 @@ function renderBuild(project: JobLeaf, iteration: string) {
 `;
 }
 
+function gatherBuilds(
+    root: Root<JobLeaf>,
+    project: JobLeaf,
+    iteration: string,
+): { project: JobLeaf; iteration: string }[] {
+    const ret = [];
+    ret.push({ project, iteration });
+    const build = project.builds[iteration];
+    for (const downstream of build.downstream) {
+        const project = findElement(root, downstream.project);
+        ret.concat(gatherBuilds(root, project, downstream.iteration));
+    }
+    return ret;
+}
+
 function renderBuildPage(
     project: JobLeaf,
     iteration: string,
@@ -84,4 +98,4 @@ function renderBuildPage(
 `;
 }
 
-export function render(root: RootLeaf, dest: string) {}
+export function render(root: Root<JobLeaf>, dest: string) {}
