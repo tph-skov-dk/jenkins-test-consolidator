@@ -115,7 +115,7 @@ type TestCase =
 type Build = {
     result: "SUCCESS" | "ABORTED" | "FAILURE";
     upstream: {
-        project: string;
+        project: string[];
         build: string;
     } | null;
     tests: TestCase[];
@@ -128,14 +128,22 @@ type Job = {
     triggers: string[][];
 };
 
+type RootLeaf = {
+    root: true;
+    children: JobLeaf[];
+};
+
 type JobLeaf = {
+    root: false;
     uuid: string;
     name: string;
     configFile: string;
     builds: { [key: string]: Build };
-    triggers: string[][] | null;
+    triggers: string[][];
     children: JobLeaf[];
 };
+
+type LeafWithChildren = RootLeaf | JobLeaf;
 
 function formatRelationship(root: string, path: string): string[] {
     const ret = [];
@@ -164,81 +172,156 @@ function takeWhere<T>(array: T[], filter: (x: T) => boolean): T[] {
 }
 
 function findParent(
-    jobs: JobLeaf[],
-    leaf: JobLeaf,
+    root: RootLeaf,
+    target: JobLeaf,
+): JobLeaf | RootLeaf {
+    function inner(
+        root: RootLeaf | JobLeaf,
+        src: JobLeaf,
+    ): JobLeaf | RootLeaf | undefined {
+        if (root.children.find((x) => x.uuid === src.uuid)) {
+            return root;
+        }
+        for (const leaf of root.children) {
+            const parent = inner(leaf, src);
+            if (parent) {
+                return parent;
+            }
+        }
+        return undefined;
+    }
+
+    const x = inner(root, target);
+    if (x === undefined) {
+        throw new Error(`${target.name} does not exist`);
+    }
+    return x;
+}
+
+function findRelative(
+    root: RootLeaf,
+    initial: JobLeaf,
+    components: string[],
 ): JobLeaf {
-    function findParentInner(
+    function inner(
+        root: RootLeaf,
+        leaf: RootLeaf | JobLeaf,
+        components: string[],
+    ): JobLeaf | undefined {
+        const [head, ...rest] = components;
+        if (head === "..") {
+            if (leaf.root) {
+                throw new Error(`"..'d" at root level`);
+            }
+            return inner(root, findParent(root, leaf), rest);
+        }
+        const next = leaf.children.find((x) => x.name === head);
+        if (next === undefined) {
+            throw new Error(
+                `got '${head}' in [${components}], but '${head}' not in [${
+                    leaf.children.map((x) => x.name)
+                }]`,
+            );
+        }
+        if (rest.length === 0) {
+            return next;
+        }
+        return inner(root, next, rest);
+    }
+
+    const x = inner(root, findParent(root, initial), components);
+    if (x === undefined) {
+        throw new Error(`${initial.name} does not exist`);
+    }
+    return x;
+}
+
+function absolutePath(
+    root: RootLeaf,
+    leaf: JobLeaf,
+): string[] {
+    function inner(
         jobs: JobLeaf[],
         leaf: JobLeaf,
-    ): JobLeaf | undefined {
+        parents: string[],
+    ): string[] | undefined {
         for (const job of jobs) {
-            if (job.children.find((x) => x.uuid === leaf.uuid)) {
-                return job;
+            if (job.uuid === leaf.uuid) {
+                return [...parents, job.name];
             }
-            const descendant = findParentInner(job.children, leaf);
+            const descendant = inner(job.children, leaf, [
+                ...parents,
+                job.name,
+            ]);
             if (descendant) {
                 return descendant;
             }
         }
         return undefined;
     }
-    const parent = findParentInner(jobs, leaf);
-    if (!parent) {
-        throw new Error(`leaf ${leaf.name} (${leaf.uuid}) has no parent`);
+    const path = inner(root.children, leaf, []);
+
+    if (path === undefined) {
+        throw new Error(`leaf ${leaf.name} (${leaf.uuid}) could not be found`);
     }
-    return parent;
+    return path;
+}
+function resolveTestPaths(root: RootLeaf): RootLeaf {
+    function inner(root: RootLeaf, current: JobLeaf): JobLeaf {
+        const ret = structuredClone(current);
+        for (const buildIteration in ret.builds) {
+            const build = ret.builds[buildIteration];
+            if (build.upstream === null) {
+                continue;
+            }
+            build.upstream.project = absolutePath(
+                root,
+                findRelative(
+                    root,
+                    current,
+                    build.upstream.project,
+                ),
+            );
+        }
+        return ret;
+    }
+    return { ...root, children: root.children.map((x) => inner(root, x)) };
 }
 
-function findRelative(
-    jobs: JobLeaf[],
-    leaf: JobLeaf,
-    components: string[],
-): JobLeaf {
-    const [head, ...rest] = components;
-    if (head === "..") {
-        return findRelative(jobs, findParent(jobs, leaf), rest);
+function buildJobTree(jobs: Job[]): RootLeaf {
+    function inner(jobs: Job[]): JobLeaf[] {
+        const ret: JobLeaf[] = [];
+        const roots = takeWhere(jobs, (x) => x.relationship.length === 1);
+        const rest = jobs;
+        for (const root of roots) {
+            const children = takeWhere(
+                rest,
+                (x) => x.relationship[0] === root.relationship[0],
+            ).map((x) => {
+                x.relationship.shift();
+                return x;
+            });
+            const childrenTree = inner(children);
+            ret.push({
+                root: false,
+                uuid: crypto.randomUUID(),
+                name: root.relationship[0],
+                children: childrenTree,
+                builds: root.builds,
+                configFile: root.configFile,
+                triggers: root.triggers,
+            });
+        }
+        return ret;
     }
-    const next = leaf.children.find((x) => x.name === head);
-    if (!next) {
-        throw new Error(
-            `got '${head}' in ${components}, but '${head}' not in ${
-                leaf.children.map((x) => x.name)
-            }`,
-        );
-    }
-    return findRelative(jobs, next, rest);
-}
-
-function buildJobTree(jobs: Job[]): JobLeaf[] {
-    const ret: JobLeaf[] = [];
-    const roots = takeWhere(jobs, (x) => x.relationship.length === 1);
-    const rest = jobs;
-    for (const root of roots) {
-        const children = takeWhere(
-            rest,
-            (x) => x.relationship[0] === root.relationship[0],
-        ).map((x) => {
-            x.relationship.shift();
-            return x;
-        });
-        const childrenTree = buildJobTree(children);
-        ret.push({
-            uuid: crypto.randomUUID(),
-            name: root.relationship[0],
-            children: childrenTree,
-            builds: root.builds,
-            configFile: root.configFile,
-            triggers: root.triggers,
-        });
-    }
-    return ret;
+    return { root: true, children: inner(jobs) };
 }
 
 function buildIterationFromPath(path: string): string {
     const buildIterationMatch = path.match(
         /[\\/](\d+)[\\/]build.xml$/,
     );
-    if (!buildIterationMatch) {
+    if (buildIterationMatch === null) {
         throw new Error(
             `'${path}' does not follow pattern '/\\d+/build.xml'`,
         );
@@ -281,7 +364,6 @@ async function testCasesFromJunitXmlPath(
 }
 
 async function buildFromBuildXmlPath(buildXmlPath: string) {
-    console.log(buildXmlPath);
     const parsed = BuildFileXml.parse(
         xml.parse(await Deno.readTextFile(buildXmlPath)),
     );
@@ -307,10 +389,10 @@ async function buildFromBuildXmlPath(buildXmlPath: string) {
     return {
         iteration: buildIterationFromPath(buildXmlPath),
         build: {
-            upstream: cause
+            upstream: cause !== undefined
                 ? {
                     build: cause.upstreamBuild,
-                    project: cause.upstreamProject,
+                    project: cause.upstreamProject.split(/[\\/]/),
                 }
                 : null,
             result: parsedBuild.result,
@@ -366,19 +448,30 @@ async function parseJobs(root: string): Promise<Job[]> {
             includeFiles: true,
         })
     ) {
-        console.log(path);
         jobs.push(await jobFromConfigXmlPath(root, path));
     }
     return jobs;
 }
 
 export async function buildTree(root: string) {
-    if (!root.endsWith("/")) {
+    if (!(root.endsWith("/") || root.endsWith("\\"))) {
         root += "/";
     }
-    return buildJobTree(await parseJobs(root));
+    return resolveTestPaths(buildJobTree(await parseJobs(root)));
+}
+
+function debug(children: JobLeaf[]) {
+    for (const item of children) {
+        if (item.name.startsWith("Labgrid")) {
+            for (const x in item.builds) {
+                const build = item.builds[x];
+                console.log(build.upstream);
+            }
+        }
+        debug(item.children);
+    }
 }
 
 if (import.meta.main) {
-    console.log(await buildTree("test_input"));
+    debug((await buildTree("test_input")).children);
 }
