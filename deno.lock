@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@libs/xml@^7.0.3": "7.0.3",
     "jsr:@std/fs@^1.0.22": "1.0.22",
+    "jsr:@std/html@^1.0.5": "1.0.5",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@^1.1.4": "1.1.4",
     "npm:zod@^4.3.6": "4.3.6"
@@ -17,6 +18,9 @@
         "jsr:@std/internal",
         "jsr:@std/path"
       ]
+    },
+    "@std/html@1.0.5": {
+      "integrity": "4e2d693f474cae8c16a920fa5e15a3b72267b94b84667f11a50c6dd1cb18d35e"
     },
     "@std/internal@1.0.12": {
       "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
@@ -37,6 +41,7 @@
     "dependencies": [
       "jsr:@libs/xml@^7.0.3",
       "jsr:@std/fs@^1.0.22",
+      "jsr:@std/html@^1.0.5",
       "jsr:@std/path@^1.1.4",
       "npm:zod@^4.3.6"
     ]

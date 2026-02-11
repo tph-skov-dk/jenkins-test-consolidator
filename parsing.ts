@@ -87,11 +87,10 @@ type TestCase =
     & {
         duration: number;
         testName: string;
-        skipped: boolean;
     }
     & (
-        { success: true } | {
-            success: false;
+        { result: "success" | "skipped" } | {
+            result: "failed";
             error: {
                 stackTrace: string;
                 details: string;
@@ -100,7 +99,7 @@ type TestCase =
     );
 
 export type Build = {
-    result: "SUCCESS" | "ABORTED" | "FAILURE";
+    result: "success" | "aborted" | "failed";
     upstream: {
         project: string[];
         build: string;
@@ -144,15 +143,21 @@ async function testCasesFromJunitXmlPath(
     }
 
     return junitTestCases.map((testCase): TestCase => {
+        if (testCase.skipped) {
+            return {
+                ...testCase,
+                result: "skipped",
+            };
+        }
         if (testCase.errorDetails === undefined) {
             return {
                 ...testCase,
-                success: true,
+                result: "success",
             };
         }
         return {
             ...testCase,
-            success: false,
+            result: "failed",
             error: {
                 stackTrace: testCase.errorStackTrace,
                 details: testCase.errorDetails,
@@ -161,7 +166,9 @@ async function testCasesFromJunitXmlPath(
     });
 }
 
-async function buildFromBuildXmlPath(buildXmlPath: string) {
+async function buildFromBuildXmlPath(
+    buildXmlPath: string,
+): Promise<{ iteration: string; build: Build }> {
     const parsed = BuildFileXml.parse(
         xml.parse(await Deno.readTextFile(buildXmlPath)),
     );
@@ -184,6 +191,19 @@ async function buildFromBuildXmlPath(buildXmlPath: string) {
         }
     }
 
+    function standardizeResultFormat(
+        result: z.infer<typeof BuildXml>["result"],
+    ): Build["result"] {
+        switch (result) {
+            case "SUCCESS":
+                return "success";
+            case "ABORTED":
+                return "aborted";
+            case "FAILURE":
+                return "failed";
+        }
+    }
+
     return {
         iteration: buildIterationFromPath(buildXmlPath),
         build: {
@@ -193,7 +213,7 @@ async function buildFromBuildXmlPath(buildXmlPath: string) {
                     project: cause.upstreamProject.split(/[\\/]/),
                 }
                 : null,
-            result: parsedBuild.result,
+            result: standardizeResultFormat(parsedBuild.result),
             tests,
         },
     };

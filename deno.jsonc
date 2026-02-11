@@ -2,6 +2,7 @@
     "imports": {
         "@libs/xml": "jsr:@libs/xml@^7.0.3",
         "@std/fs": "jsr:@std/fs@^1.0.22",
+        "@std/html": "jsr:@std/html@^1.0.5",
         "@std/path": "jsr:@std/path@^1.1.4",
         "zod": "npm:zod@^4.3.6"
     },

@@ -1,6 +1,6 @@
 import { Build, Job } from "./parsing.ts";
 
-type RootLeaf = {
+export type RootLeaf = {
     root: true;
     children: JobLeaf[];
 };
