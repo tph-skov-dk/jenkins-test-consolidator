@@ -1,5 +1,5 @@
 import { escape } from "node:querystring";
-import { findElement, JobLeaf, Root } from "./tree.ts";
+import { findElement, Job, Root } from "./tree.ts";
 
 function rootHtml(name: string, body: string) {
     return `
@@ -18,7 +18,7 @@ function rootHtml(name: string, body: string) {
     `;
 }
 
-function renderProjectTree(root: JobLeaf): string {
+function renderProjectTree(root: Job): string {
     const children = root.children.map(renderProjectTree);
     return `
             <li><p><a href="#">${escape(root.name)}</a></p>
@@ -27,7 +27,7 @@ function renderProjectTree(root: JobLeaf): string {
 `;
 }
 
-function renderIndexPage(root: JobLeaf) {
+function renderIndexPage(root: Job) {
     return `
             <h1>Pims 9.1.x</h1>
         <everything>
@@ -52,7 +52,7 @@ function renderIndexPage(root: JobLeaf) {
         </everything>
 `;
 }
-function renderBuild(project: JobLeaf, iteration: string) {
+function renderBuild(project: Job, iteration: string) {
     return `<build>
                 <h2>${escape(project.name)} - Build ${escape(iteration)} (${
         escape(project.builds[iteration].result)
@@ -71,10 +71,10 @@ function renderBuild(project: JobLeaf, iteration: string) {
 }
 
 function gatherBuilds(
-    root: Root<JobLeaf>,
-    project: JobLeaf,
+    root: Root<Job>,
+    project: Job,
     iteration: string,
-): { project: JobLeaf; iteration: string }[] {
+): { project: Job; iteration: string }[] {
     const ret = [];
     ret.push({ project, iteration });
     const build = project.builds[iteration];
@@ -86,9 +86,9 @@ function gatherBuilds(
 }
 
 function renderBuildPage(
-    project: JobLeaf,
+    project: Job,
     iteration: string,
-    builds: { project: JobLeaf; iteration: string }[],
+    builds: { project: Job; iteration: string }[],
 ) {
     `
         <h1>${project.name} - Build ${iteration}</h1>
@@ -98,4 +98,4 @@ function renderBuildPage(
 `;
 }
 
-export function render(root: Root<JobLeaf>, dest: string) {}
+export function render(root: Root<Job>, dest: string) {}

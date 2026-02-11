@@ -1,12 +1,14 @@
 import { parseJobs } from "./parsing.ts";
-import { buildTree, JobLeaf } from "./tree.ts";
+import { buildTree, Job } from "./tree.ts";
 
-function debug(children: JobLeaf[]) {
+function debug(children: Job[]) {
     for (const item of children) {
-        if (item.name.startsWith("Labgrid")) {
+        if (item.name.startsWith("Start")) {
             for (const iteration in item.builds) {
                 const build = item.builds[iteration];
-                console.log(build.downstream);
+                if (build.downstream.length > 0) {
+                    console.log(build.downstream);
+                }
             }
         }
         debug(item.children);
