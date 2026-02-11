@@ -1,5 +1,7 @@
 import { escape } from "node:querystring";
 import { findElement, Job, Root } from "./tree.ts";
+import * as fs from "@std/fs";
+import * as pathTools from "@std/path";
 
 function rootHtml(name: string, body: string) {
     return `
@@ -9,7 +11,7 @@ function rootHtml(name: string, body: string) {
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>${name}</title>
-                <link href="/style.css" rel="stylesheet">
+                <link href="style.css" rel="stylesheet">
             </head>
             <body>
                 ${body}
@@ -63,7 +65,9 @@ function renderBuild(project: Job, iteration: string) {
 
             return `<case ${type}><case-name>${
                 escape(test.testName)
-            }</case-name> 0.52s | ${type.padStart("skipped".length)}</case>`;
+            }</case-name> ${test.duration}s | ${
+                type.padStart("skipped".length)
+            }</case>`;
         }).join("")
     }
             </build>
@@ -80,7 +84,7 @@ function gatherBuilds(
     const build = project.builds[iteration];
     for (const downstream of build.downstream) {
         const project = findElement(root, downstream.project);
-        ret.concat(gatherBuilds(root, project, downstream.iteration));
+        ret.push(...gatherBuilds(root, project, downstream.iteration));
     }
     return ret;
 }
@@ -90,12 +94,48 @@ function renderBuildPage(
     iteration: string,
     builds: { project: Job; iteration: string }[],
 ) {
-    `
+    return `
         <h1>${project.name} - Build ${iteration}</h1>
         <project-test-grid>
-            ${builds.map((x) => renderBuild(x.project, x.iteration))}
+            ${builds.map((x) => renderBuild(x.project, x.iteration)).join("")}
         </project-test-grid>
 `;
 }
 
-export function render(root: Root<Job>, dest: string) {}
+export async function render(root: Root<Job>, dest: string) {
+    await fs.ensureDir(dest);
+    await Deno.writeTextFile(pathTools.join(dest, ".gitignore"), "*");
+    async function x(root: Root<Job>, children: Job[], dest: string) {
+        for (const child of children) {
+            await x(root, child.children, dest);
+            const buildz = Object.keys(child.builds);
+            if (buildz.length === 0) {
+                continue;
+            }
+
+            const latest = buildz[buildz.length - 1];
+            if (
+                !(child.name === "Start-Tests" &&
+                    child.configFile.includes("BD5XX"))
+            ) {
+                continue;
+            }
+            console.log(
+                gatherBuilds(root, child, latest),
+            );
+
+            await Deno.writeTextFile(
+                pathTools.join(dest, child.name + child.uuid + ".html"),
+                rootHtml(
+                    child.name,
+                    renderBuildPage(
+                        child,
+                        latest,
+                        gatherBuilds(root, child, latest),
+                    ),
+                ),
+            );
+        }
+    }
+    await x(root, root.children, dest);
+}

@@ -269,7 +269,8 @@ function reverseTestPathDirection(
             .entries(current.builds)
             .map(([iteration, build]): [string, DownstreamBuild] => {
                 return [iteration, {
-                    ...build,
+                    result: build.result,
+                    tests: build.tests,
                     downstream: gatherDownStream(root, path, iteration),
                 }];
             });
