@@ -92,7 +92,7 @@ const ConfigXml = z.object({
             ?.["hudson.plugins.parameterizedtrigger.BuildTrigger"]
             ?.configs["hudson.plugins.parameterizedtrigger.BuildTriggerConfig"]
             .projects.split(",")
-            .map((x) => x.split("/")) ?? [],
+            .map((x) => x.split(/[\\/]/)) ?? [],
     };
 });
 
@@ -139,7 +139,7 @@ type JobLeaf = {
 
 function formatRelationship(root: string, path: string): string[] {
     const ret = [];
-    const split = path.slice(root.length).split("/");
+    const split = path.slice(root.length).split(/[\\/]/);
     for (let i = 0; i < split.length; ++i) {
         if (split[i] !== "jobs") {
             throw new Error(`expected 'jobs', got '${split[i]}'`);
@@ -236,7 +236,7 @@ function buildJobTree(jobs: Job[]): JobLeaf[] {
 
 function buildIterationFromPath(path: string): string {
     const buildIterationMatch = path.match(
-        /\/(\d+)\/build.xml$/,
+        /[\\/](\d+)[\\/]build.xml$/,
     );
     if (!buildIterationMatch) {
         throw new Error(
@@ -333,7 +333,7 @@ async function jobFromConfigXmlPath(
             {
                 includeDirs: false,
                 includeSymlinks: false,
-                match: [/builds\/\d+\/build\.xml$/],
+                match: [/builds[\\/]\d+[\\/]build\.xml$/],
                 maxDepth: 3,
             },
         )
@@ -359,13 +359,14 @@ async function parseJobs(root: string): Promise<Job[]> {
     const jobs: Job[] = [];
     for await (
         const { path } of fs.walk(root, {
-            match: [/jobs\/[^/]+\/config\.xml$/],
-            skip: [/jobs\/Discontinued/],
+            match: [/jobs[\\/][^\\/]+[\\/]config\.xml$/],
+            skip: [/jobs[\\/]Discontinued/],
             includeDirs: false,
             includeSymlinks: false,
             includeFiles: true,
         })
     ) {
+        console.log(path);
         jobs.push(await jobFromConfigXmlPath(root, path));
     }
     return jobs;
@@ -379,5 +380,5 @@ export async function buildTree(root: string) {
 }
 
 if (import.meta.main) {
-    buildTree("test_input");
+    console.log(await buildTree("test_input"));
 }
