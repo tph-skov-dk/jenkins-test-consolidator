@@ -1,4 +1,4 @@
-import { escape } from "node:querystring";
+import { escape } from "@std/html";
 import {
     absolutePath,
     DownstreamBuild,
@@ -29,40 +29,68 @@ function rootHtml(name: string, body: string) {
     `;
 }
 
-function renderProjectTree(root: Job): string {
-    const children = root.children.map(renderProjectTree);
+function renderProjectTree(root: Root, job: Job | Root): string {
+    const header = job.root
+        ? escape(job.name)
+        : `<a href="/${absolutePath(root, job).join("/")}/index.html">${
+            escape(job.name)
+        }</a>`;
+    const children = job.children.map((x) => renderProjectTree(root, x));
     return `
-            <li><p><a href="#">${escape(root.name)}</a></p>
+        <li>
+            <p>${header}</p>
             ${children.length > 0 ? `<ul>${children.join("")}</ul>` : ""}
-                </li>
+        </li>
 `;
 }
 
-function renderIndexPage(root: Job) {
+function renderViewPage(root: Root, job: Job) {
+    const builds = Object
+        .entries(job.builds)
+        .sort(([lhs], [rhs]) => parseInt(lhs) - parseInt(rhs))
+        .reverse()
+        .map(([iteration, build]) => {
+            return `<li><p><a href="build-${iteration}.html">Build ${
+                escape(iteration)
+            } - ${build.result}</a></p></li>`;
+        })
+        .join("");
     return `
-            <h1>Pims 9.1.x</h1>
+        <h1>${escape(job.name)}</h1>
+        <h2><a href="../index.html">Back</a></h2>
         <everything>
             <project-children>
                 <h2>Children</h2>
+                <hr>
                 <ul>
-                    ${renderProjectTree(root)}
+                    ${renderProjectTree(root, job)}
                 </ul>
             </project-children>
             <project-builds>
                 <h2>Builds</h2>
+                <hr>
                 <ul>
-                    ${
-        Object.entries(root.builds).map(([iteration, build]) => {
-            return `<li><p><a href="#">Build ${
-                escape(iteration)
-            } - ${build.result}</a></p></li>`;
-        })
-    }
+                    ${builds}
                 </ul>
             </project-builds>
         </everything>
 `;
 }
+
+function renderRootPage(root: Root) {
+    return `
+        <h1>${root.name}</h1>
+        <everything>
+            <project-children>
+                <h2>Children</h2>
+                <ul>
+                    ${renderProjectTree(root, root)}
+                </ul>
+            </project-children>
+        </everything>
+`;
+}
+
 function renderBuild(project: Job, iteration: string) {
     return `<build>
                 <h2>${escape(project.name)} - Build ${escape(iteration)} (${
@@ -105,6 +133,7 @@ function renderBuildPage(
 ) {
     return `
         <h1>${project.name} - Build ${iteration}</h1>
+        <h2><a href="index.html">Back</a></h2>
         <project-test-grid>
             ${builds.map((x) => renderBuild(x.project, x.iteration)).join("")}
         </project-test-grid>
@@ -113,6 +142,7 @@ function renderBuildPage(
 
 function style() {
     return `
+
 :root {
     color-scheme: dark;
     font-family:
@@ -130,15 +160,21 @@ everything {
             margin-bottom: 0;
         }
         flex: 1;
-        border: 1px solid;
         padding: 0.5rem;
     }
     gap: 0.5rem;
+    project-children > ul {
+        border-left: none;
+        padding-left: 0;
+    }
 }
 
 ul {
     font-size: 1.5rem;
-    padding-left: 2ch;
+    border-left: 2px solid rgb(128, 128, 128);
+    padding-left: 1ch;
+    margin-left: 1ch;
+    list-style:none;
     p {
         margin-block: 0.25rem;
         font-weight: bold;
@@ -190,6 +226,10 @@ export async function render(root: Root, dest: string) {
     await fs.emptyDir(dest);
     await Deno.writeTextFile(pathTools.join(dest, ".gitignore"), "*");
     await Deno.writeTextFile(pathTools.join(dest, "style.css"), style());
+    await Deno.writeTextFile(
+        pathTools.join(dest, "index.html"),
+        rootHtml(root.name, renderRootPage(root)),
+    );
     async function inner(
         root: Root,
         jobs: Job[],
@@ -206,12 +246,12 @@ export async function render(root: Root, dest: string) {
                 pathTools.join(destDir, "index.html"),
                 rootHtml(
                     job.name,
-                    renderIndexPage(job),
+                    renderViewPage(root, job),
                 ),
             );
             for (const iteration of Object.keys(job.builds)) {
                 await Deno.writeTextFile(
-                    pathTools.join(destDir, "builds.html"),
+                    pathTools.join(destDir, `build-${iteration}.html`),
                     rootHtml(
                         job.name,
                         renderBuildPage(

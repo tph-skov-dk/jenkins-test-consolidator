@@ -21,6 +21,7 @@ export type Job<Build> = {
 
 export type Root<Build> = {
     root: true;
+    name: string;
     children: Job<Build>[];
 };
 
@@ -267,7 +268,7 @@ function reverseTestPathDirection(
             children: current.children.map((x) => inner(root, x)),
         };
     }
-    return ({ root: true, children: root.children.map((x) => inner(root, x)) });
+    return ({ ...root, children: root.children.map((x) => inner(root, x)) });
 }
 
 function buildJobTree(jobs: ParsedJob[]): Root<UpstreamBuild> {
@@ -296,7 +297,7 @@ function buildJobTree(jobs: ParsedJob[]): Root<UpstreamBuild> {
         }
         return ret;
     }
-    return { root: true, children: inner(jobs) };
+    return { root: true, name: "Project root", children: inner(jobs) };
 }
 
 export function buildTree(jobs: ParsedJob[]): Root<DownstreamBuild> {
