@@ -3,10 +3,12 @@ import * as pathTools from "@std/path";
 import * as z from "zod";
 import * as xml from "@libs/xml";
 
+const StringBool = z.literal(["true", "false"]).transform((x) => x === "true");
+
 const JunitXmlTestBaseCase = z.object({
     duration: z.coerce.number(),
     testName: z.string(),
-    skipped: z.coerce.boolean(),
+    skipped: StringBool,
 });
 
 const JunitXmlTestSuccessCase = JunitXmlTestBaseCase.extend({

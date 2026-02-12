@@ -9,29 +9,19 @@ export type DownstreamBuild = Replace<UpstreamBuild, "upstream", {
     }[];
 }>;
 
-type UnresolvedJob = {
+export type Job<Build> = {
     root: false;
     uuid: string;
     name: string;
     configFile: string;
-    builds: { [key: string]: UpstreamBuild };
+    builds: { [key: string]: Build };
     triggers: string[][];
-    children: UnresolvedJob[];
+    children: Job<Build>[];
 };
 
-export type Root<T> = {
+export type Root<Build> = {
     root: true;
-    children: T[];
-};
-
-export type Job = {
-    root: false;
-    uuid: string;
-    name: string;
-    configFile: string;
-    builds: { [key: string]: DownstreamBuild };
-    triggers: string[][];
-    children: Job[];
+    children: Job<Build>[];
 };
 
 function takeWhere<T>(array: T[], filter: (x: T) => boolean): T[] {
@@ -47,14 +37,14 @@ function takeWhere<T>(array: T[], filter: (x: T) => boolean): T[] {
     return ret;
 }
 
-function findParent(
-    root: Root<UnresolvedJob>,
-    target: UnresolvedJob,
-): UnresolvedJob | Root<UnresolvedJob> {
+function findParent<Build>(
+    root: Root<Build>,
+    target: Job<Build>,
+): Job<Build> | Root<Build> {
     function inner(
-        root: Root<UnresolvedJob> | UnresolvedJob,
-        src: UnresolvedJob,
-    ): UnresolvedJob | Root<UnresolvedJob> | undefined {
+        root: Root<Build> | Job<Build>,
+        src: Job<Build>,
+    ): Job<Build> | Root<Build> | undefined {
         if (root.children.find((x) => x.uuid === src.uuid)) {
             return root;
         }
@@ -74,16 +64,16 @@ function findParent(
     return x;
 }
 
-function findRelative(
-    root: Root<UnresolvedJob>,
-    initial: UnresolvedJob,
+function findRelative<Build>(
+    root: Root<Build>,
+    initial: Job<Build>,
     components: string[],
-): UnresolvedJob {
+): Job<Build> {
     function inner(
-        root: Root<UnresolvedJob>,
-        leaf: Root<UnresolvedJob> | UnresolvedJob,
+        root: Root<Build>,
+        leaf: Root<Build> | Job<Build>,
         components: string[],
-    ): UnresolvedJob | undefined {
+    ): Job<Build> | undefined {
         const [head, ...rest] = components;
         if (head === "..") {
             if (leaf.root) {
@@ -112,15 +102,15 @@ function findRelative(
     return x;
 }
 
-export function findElement(
-    root: Root<Job>,
+export function findElement<Build>(
+    root: Root<Build>,
     components: string[],
-): Job {
+): Job<Build> {
     function inner(
-        root: Root<Job>,
-        leaf: Root<Job> | Job,
+        root: Root<Build>,
+        leaf: Root<Build> | Job<Build>,
         components: string[],
-    ): Job | undefined {
+    ): Job<Build> {
         const [head, ...rest] = components;
         const next = leaf.children.find((x) => x.name === head);
         if (next === undefined) {
@@ -136,20 +126,16 @@ export function findElement(
         return inner(root, next, rest);
     }
 
-    const x = inner(root, root, components);
-    if (x === undefined) {
-        throw new Error(`[${components}] does not exist`);
-    }
-    return x;
+    return inner(root, root, components);
 }
 
-function absolutePath(
-    root: Root<UnresolvedJob>,
-    leaf: UnresolvedJob,
+export function absolutePath<Build>(
+    root: Root<Build>,
+    leaf: Job<Build>,
 ): string[] {
     function inner(
-        jobs: UnresolvedJob[],
-        leaf: UnresolvedJob,
+        jobs: Job<Build>[],
+        leaf: Job<Build>,
         parents: string[],
     ): string[] | undefined {
         for (const job of jobs) {
@@ -174,12 +160,12 @@ function absolutePath(
     return path;
 }
 function absoluteTestPaths(
-    root: Root<UnresolvedJob>,
-): Root<UnresolvedJob> {
+    root: Root<UpstreamBuild>,
+): Root<UpstreamBuild> {
     function inner(
-        root: Root<UnresolvedJob>,
-        current: UnresolvedJob,
-    ): UnresolvedJob {
+        root: Root<UpstreamBuild>,
+        current: Job<UpstreamBuild>,
+    ): Job<UpstreamBuild> {
         const ret = structuredClone(current);
         for (const buildIteration in ret.builds) {
             const build = ret.builds[buildIteration];
@@ -201,7 +187,7 @@ function absoluteTestPaths(
 }
 
 function gatherDownStream(
-    root: Root<UnresolvedJob>,
+    root: Root<UpstreamBuild>,
     targetPath: string[],
     targetIteration: string,
 ): DownstreamBuild["downstream"] {
@@ -219,7 +205,7 @@ function gatherDownStream(
     function inner(
         targetPath: string[],
         targetIteration: string,
-        children: UnresolvedJob["children"],
+        children: Job<UpstreamBuild>[],
         acc: DownstreamBuild["downstream"],
     ): DownstreamBuild["downstream"] {
         for (const child of children) {
@@ -258,12 +244,12 @@ function gatherDownStream(
 }
 
 function reverseTestPathDirection(
-    root: Root<UnresolvedJob>,
-): Root<Job> {
+    root: Root<UpstreamBuild>,
+): Root<DownstreamBuild> {
     function inner(
-        root: Root<UnresolvedJob>,
-        current: UnresolvedJob,
-    ): Job {
+        root: Root<UpstreamBuild>,
+        current: Job<UpstreamBuild>,
+    ): Job<DownstreamBuild> {
         const path = absolutePath(root, current);
         const builds: [string, DownstreamBuild][] = Object
             .entries(current.builds)
@@ -284,9 +270,9 @@ function reverseTestPathDirection(
     return ({ root: true, children: root.children.map((x) => inner(root, x)) });
 }
 
-function buildJobTree(jobs: ParsedJob[]): Root<UnresolvedJob> {
-    function inner(jobs: ParsedJob[]): UnresolvedJob[] {
-        const ret: UnresolvedJob[] = [];
+function buildJobTree(jobs: ParsedJob[]): Root<UpstreamBuild> {
+    function inner(jobs: ParsedJob[]): Job<UpstreamBuild>[] {
+        const ret: Job<UpstreamBuild>[] = [];
         const roots = takeWhere(jobs, (x) => x.relationship.length === 1);
         const rest = jobs;
         for (const root of roots) {
@@ -313,6 +299,6 @@ function buildJobTree(jobs: ParsedJob[]): Root<UnresolvedJob> {
     return { root: true, children: inner(jobs) };
 }
 
-export function buildTree(jobs: ParsedJob[]): Root<Job> {
+export function buildTree(jobs: ParsedJob[]): Root<DownstreamBuild> {
     return reverseTestPathDirection(absoluteTestPaths(buildJobTree(jobs)));
 }
