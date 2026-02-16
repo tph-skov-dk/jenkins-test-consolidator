@@ -7,9 +7,10 @@ import * as path from "@std/path";
 if (import.meta.main) {
     const target = Deno.args[0];
     const out = Deno.args[1] ?? "out";
+    const skip = Deno.args[2]?.split(",") ?? "out";
     if (!target) {
         console.warn("no target specified");
-        console.warn(`  hint: try <binary_path> <target> <output>`);
+        console.warn(`  hint: try <binary_path> <target> <output> <skip0,skip1,skip2>`);
         Deno.exit(1);
     }
     if (!await fs.exists(path.join(target, "jobs"))) {
@@ -19,7 +20,7 @@ if (import.meta.main) {
         );
         Deno.exit(1);
     }
-    await render(buildTree(await parseJobs(Deno.args[0])), out);
+    await render(buildTree(await parseJobs(target, skip)), out);
     console.warn(`rendered to '${out}'`);
     Deno.exit(0);
 }

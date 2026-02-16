@@ -253,6 +253,7 @@ async function jobFromConfigXmlPath(
             },
         )
     ) {
+        console.log(buildXmlPath);
         const { iteration, build } = await buildFromBuildXmlPath(
             buildXmlPath,
         );
@@ -270,7 +271,7 @@ async function jobFromConfigXmlPath(
     };
 }
 
-export async function parseJobs(root: string): Promise<Job[]> {
+export async function parseJobs(root: string, skip: string[]): Promise<Job[]> {
     if (!(root.endsWith("/") || root.endsWith("\\"))) {
         root += "/";
     }
@@ -279,11 +280,13 @@ export async function parseJobs(root: string): Promise<Job[]> {
     for await (
         const { path } of fs.walk(root, {
             match: [/jobs[\\/][^\\/]+[\\/]config\.xml$/],
+            skip: skip.map(x => new RegExp(RegExp.escape(x))),
             includeDirs: false,
             includeSymlinks: false,
             includeFiles: true,
         })
     ) {
+        console.log(path);
         jobs.push(await jobFromConfigXmlPath(root, path));
     }
     return jobs;
