@@ -279,7 +279,6 @@ export async function parseJobs(root: string): Promise<Job[]> {
     for await (
         const { path } of fs.walk(root, {
             match: [/jobs[\\/][^\\/]+[\\/]config\.xml$/],
-            skip: [/jobs[\\/]Discontinued/],
             includeDirs: false,
             includeSymlinks: false,
             includeFiles: true,
