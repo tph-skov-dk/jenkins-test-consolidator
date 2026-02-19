@@ -1,0 +1,40 @@
+:root {
+    color-scheme: dark;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+body {
+    max-width: 1000px;
+    margin: 1rem auto;
+    font-family: monospace;
+    font-size: 1.1rem;
+}
+
+build-table {
+    display: table;
+}
+
+test-result {
+    display: block;
+    border: 1px solid;
+    width: 1em;
+    height: 1em;
+    line-height: 1;
+}
+
+build-name {
+    display: block;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    line-height: 1;
+    font-weight: normal;
+}
+
+th, td {
+    border-right: 1px solid gray;
+    border-bottom: 1px solid gray;
+    padding: 0.25rem;
+}

@@ -5,7 +5,7 @@ type Replace<T, K extends keyof T, S> = Omit<T, K> & S;
 export type DownstreamBuild = Replace<UpstreamBuild, "upstream", {
     downstream: {
         project: string[];
-        iteration: string;
+        iteration: number;
     }[];
 }>;
 
@@ -14,7 +14,7 @@ export type Job<Build> = {
     uuid: string;
     name: string;
     configFile: string;
-    builds: { [key: string]: Build };
+    builds: { [key: number]: Build };
     triggers: string[][];
     children: Job<Build>[];
 };
@@ -190,7 +190,7 @@ function absoluteTestPaths(
 function gatherDownStream(
     root: Root<UpstreamBuild>,
     targetPath: string[],
-    targetIteration: string,
+    targetIteration: number,
 ): DownstreamBuild["downstream"] {
     function cmp(lhs: string[], rhs: string[]): boolean {
         if (lhs.length !== rhs.length) {
@@ -205,7 +205,7 @@ function gatherDownStream(
     }
     function inner(
         targetPath: string[],
-        targetIteration: string,
+        targetIteration: number,
         children: Job<UpstreamBuild>[],
         acc: DownstreamBuild["downstream"],
     ): DownstreamBuild["downstream"] {
@@ -222,7 +222,7 @@ function gatherDownStream(
                 }
 
                 acc.push({
-                    iteration,
+                    iteration: parseInt(iteration),
                     project: absolutePath(root, child),
                 });
             }
@@ -258,7 +258,11 @@ function reverseTestPathDirection(
                 return [iteration, {
                     result: build.result,
                     tests: build.tests,
-                    downstream: gatherDownStream(root, path, iteration),
+                    downstream: gatherDownStream(
+                        root,
+                        path,
+                        parseInt(iteration),
+                    ),
                 }];
             });
 

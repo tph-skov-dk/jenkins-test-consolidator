@@ -91,11 +91,11 @@ function renderRootPage(root: Root) {
 `;
 }
 
-function renderBuild(project: Job, iteration: string) {
+function renderBuild(project: Job, iteration: number) {
     return `<build>
-                <h2>${escape(project.name)} - Build ${escape(iteration)} (${
-        escape(project.builds[iteration].result)
-    })</h2>
+                <h2>${escape(project.name)} - Build ${
+        escape(iteration.toString())
+    } (${escape(project.builds[iteration].result)})</h2>
     ${
         project.builds[iteration].tests.map((test) => {
             const type: "success" | "skipped" | "failed" = test.result;
@@ -114,8 +114,8 @@ function renderBuild(project: Job, iteration: string) {
 function gatherBuilds(
     root: Root,
     project: Job,
-    iteration: string,
-): { project: Job; iteration: string }[] {
+    iteration: number,
+): { project: Job; iteration: number }[] {
     const ret = [];
     ret.push({ project, iteration });
     const build = project.builds[iteration];
@@ -129,7 +129,7 @@ function gatherBuilds(
 function renderBuildPage(
     project: Job,
     iteration: string,
-    builds: { project: Job; iteration: string }[],
+    builds: { project: Job; iteration: number }[],
 ) {
     return `
         <h1>${project.name} - Build ${iteration}</h1>
@@ -223,7 +223,7 @@ body {
 }
 
 export async function render(root: Root, dest: string) {
-    await fs.emptyDir(dest);
+    await fs.ensureDir(dest);
     await Deno.writeTextFile(pathTools.join(dest, ".gitignore"), "*");
     await Deno.writeTextFile(pathTools.join(dest, "style.css"), style());
     await Deno.writeTextFile(
@@ -257,7 +257,7 @@ export async function render(root: Root, dest: string) {
                         renderBuildPage(
                             job,
                             iteration,
-                            gatherBuilds(root, job, iteration),
+                            gatherBuilds(root, job, parseInt(iteration)),
                         ),
                     ),
                 );

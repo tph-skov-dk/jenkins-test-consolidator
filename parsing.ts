@@ -46,7 +46,7 @@ const BuildXml = z.object({
                 entry: z.object({
                     "hudson.model.Cause_-UpstreamCause": z.object({
                         upstreamProject: z.string(),
-                        upstreamBuild: z.string(),
+                        upstreamBuild: z.coerce.number(),
                     }).optional(),
                 }),
             }),
@@ -85,7 +85,7 @@ const ConfigXml = z.object({
     };
 });
 
-type TestCase =
+export type TestCase =
     & {
         duration: number;
         testName: string;
@@ -104,7 +104,7 @@ export type Build = {
     result: "success" | "aborted" | "failed";
     upstream: {
         project: string[];
-        iteration: string;
+        iteration: number;
     } | null;
     tests: TestCase[];
 };
@@ -112,11 +112,11 @@ export type Build = {
 export type Job = {
     relationship: string[];
     configFile: string;
-    builds: { [key: string]: Build };
+    builds: { [key: number]: Build };
     triggers: string[][];
 };
 
-function buildIterationFromPath(path: string): string {
+function buildIterationFromPath(path: string): number {
     const buildIterationMatch = path.match(
         /[\\/](\d+)[\\/]build.xml$/,
     );
@@ -125,7 +125,7 @@ function buildIterationFromPath(path: string): string {
             `'${path}' does not follow pattern '/\\d+/build.xml'`,
         );
     }
-    return buildIterationMatch[1];
+    return parseInt(buildIterationMatch[1]);
 }
 
 async function testCasesFromJunitXmlPath(
@@ -170,7 +170,7 @@ async function testCasesFromJunitXmlPath(
 
 async function buildFromBuildXmlPath(
     buildXmlPath: string,
-): Promise<{ iteration: string; build: Build }> {
+): Promise<{ iteration: number; build: Build }> {
     const parsed = BuildFileXml.parse(
         xml.parse(await Deno.readTextFile(buildXmlPath)),
     );
