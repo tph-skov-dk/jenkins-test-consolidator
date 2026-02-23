@@ -94,7 +94,6 @@ export async function render(
     jobs: JobInfo[],
     dest: string,
 ) {
-    console.log(buildGroups);
     await fs.ensureDir(dest);
     await Deno.writeTextFile(pathTools.join(dest, ".gitignore"), "*");
     await Deno.copyFile(

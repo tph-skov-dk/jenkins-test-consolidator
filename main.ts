@@ -7,7 +7,7 @@ import * as path from "@std/path";
 if (import.meta.main) {
     const target = Deno.args.at(0);
     const out = Deno.args.at(1) ?? "out";
-    const skip: string[] = Deno.args.at(2)?.split(",") ?? ["Discontinued"];
+    const skip = Deno.args.at(2)?.split(",") ?? ["Discontinued"];
     if (!target) {
         console.warn("no target specified");
         console.warn(

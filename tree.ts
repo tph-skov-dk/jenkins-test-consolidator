@@ -153,5 +153,5 @@ export function buildTree(parsed: ParsedJob[]) {
 }
 
 if (import.meta.main) {
-    console.log(buildTree(await parseJobs("home/jenkins")));
+    console.log(buildTree(await parseJobs("home/jenkins", [])));
 }
