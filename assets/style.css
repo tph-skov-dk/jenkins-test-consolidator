@@ -7,10 +7,11 @@
 }
 
 body {
-    max-width: 1000px;
-    margin: 1rem auto;
     font-family: monospace;
     font-size: 1.1rem;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 1rem;
 }
 
 table {
@@ -38,14 +39,33 @@ test-result {
 
 build-name {
     display: block;
+    font-weight: normal;
     writing-mode: vertical-rl;
     text-orientation: mixed;
-    line-height: 1;
-    font-weight: normal;
+}
+
+tr th:first-child {
+    border: none;
+}
+
+tr th:not(:first-child) {
+    width: 0;
+}
+
+tr[job] {
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
 th, td {
-    border-right: 1px solid gray;
-    border-bottom: 1px solid gray;
+    border: 1px solid gray;
     padding: 0.25rem;
+}
+
+table {
+    margin-bottom: 5rem;
+    border-collapse: collapse;
+}
+
+job-collapse-toggle {
+    cursor: pointer;
 }

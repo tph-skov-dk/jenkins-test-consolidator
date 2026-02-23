@@ -2,6 +2,7 @@ import { Build, buildTree, groupBuilds, JobInfo } from "./tree.ts";
 import * as fs from "@std/fs";
 import * as pathTools from "@std/path";
 import { parseJobs, TestCase } from "./parsing.ts";
+import { escape } from "@std/html";
 
 function rootHtml(body: string) {
     return `
@@ -12,6 +13,7 @@ function rootHtml(body: string) {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Test results</title>
                 <link href="style.css" rel="stylesheet">
+                <script defer src="script.js"></script>
             </head>
             <body>
                 ${body}
@@ -20,11 +22,11 @@ function rootHtml(body: string) {
     `;
 }
 
-type ConsolidatedTestDims = TestCase & {
+type TestCaseWithJob = TestCase & {
     job: string;
 };
 
-function gatherTests(build: Build): ConsolidatedTestDims[] {
+function gatherTests(build: Build): TestCaseWithJob[] {
     const mine = build.tests.map((x) => ({
         ...x,
         job: build.job,
@@ -45,8 +47,49 @@ function deduplicateTestInfo(
     }, []);
 }
 
+function renderJobTestGroup(
+    job: string,
+    tests: TestCaseWithJob[][],
+    jobs: JobInfo[],
+): string {
+    let work = `<tr scope="row"><td><job-collapse-toggle job="${job}">${
+        jobs.find((x) => x.uuid === job)!.relationship.join(".")
+    }</job-collapse-toggle></td>`;
+    for (let i = 0; i < tests.length; ++i) {
+        work += "<td>";
+        const relatedTests = tests[i].filter((x) => x.job === job);
+        if (relatedTests.length === 0) {
+            work += "</td>";
+            continue;
+        }
+        let result: TestCase["result"];
+        if (relatedTests.every((x) => x.result === "skipped")) {
+            result = "skipped";
+        } else if (relatedTests.some((x) => x.result === "failed")) {
+            result = "failed";
+        } else {
+            result = "success";
+        }
+        work += `<test-result ${result}></test-result>`;
+        work += "</td>";
+    }
+    work += "</tr>";
+
+    return work;
+}
+
+function sortRelationship(lhs: string[], rhs: string[]): number {
+    for (let i = 0; i < Math.min(lhs.length, rhs.length); ++i) {
+        const cmp = lhs[i].localeCompare(rhs[i]);
+        if (cmp !== 0) {
+            return cmp;
+        }
+    }
+    return lhs.length - rhs.length;
+}
+
 function renderTests(
-    tests: ConsolidatedTestDims[][],
+    tests: TestCaseWithJob[][],
     jobs: JobInfo[],
 ): string {
     const testInfo = deduplicateTestInfo(
@@ -54,18 +97,25 @@ function renderTests(
             testName: x.testName,
             job: x.job,
         })),
-    );
+    ).toSorted((lhs, rhs) => lhs.job.localeCompare(rhs.job));
 
     const ret = [];
+    let mostRecentJob = "";
     for (const info of testInfo) {
-        let work = `<tr><td>${
-            jobs.find((x) => x.uuid === info.job)?.relationship.join(".")
-        } ${info.testName}</td>`;
+        if (info.job !== mostRecentJob) {
+            mostRecentJob = info.job;
+            ret.push(renderJobTestGroup(info.job, tests, jobs));
+        }
+        let work = `<tr job="${info.job}"><td>.... ${info.testName}</td>`;
         for (let i = 0; i < tests.length; ++i) {
             work += "<td>";
-            const found = tests[i].find((x) => x.testName === info.testName);
+            const found = tests[i].find((x) =>
+                x.testName === info.testName && x.job === info.job
+            );
             if (found) {
-                work += `<test-result ${found.result}></test-result>`;
+                work += `<test-result ${found.result} info="${
+                    escape(JSON.stringify(found.job))
+                }"></test-result>`;
             }
             work += "</td>";
         }
@@ -75,13 +125,27 @@ function renderTests(
     return ret.join("");
 }
 
+function formatDate(date: Date): string {
+    return `${date.getDate()}/${date.getMonth() + 1}-${date.getFullYear()}`;
+}
+
 function renderBuild(builds: Build[], jobs: JobInfo[]): string {
-    builds.sort((lhs, rhs) => lhs.iteration - rhs.iteration).reverse();
-    const iterations = builds.map((x) => x.iteration);
+    builds = builds
+        .toSorted((lhs, rhs) => lhs.iteration - rhs.iteration)
+        .toReversed()
+        .filter((_, i) => i < 10);
     return `<table>
         <thead><tr>
-            <th></th>
-            ${iterations.map((x) => `<th scope="col">${x}</th>`).join("")}
+            <th>${
+        jobs.find((x) => x.uuid === builds[0].job)?.relationship.join(".")
+    }</th>
+            ${
+        builds.map(({ timestamp, iteration }) =>
+            `<th scope="col"><build-name>Build ${iteration}, ${
+                formatDate(timestamp)
+            }</build-name></th>`
+        ).join("")
+    }
         </tr></thead>
         <tbody>
             ${renderTests(builds.map(gatherTests), jobs)}
@@ -100,6 +164,10 @@ export async function render(
         "assets/style.css",
         pathTools.join(dest, "style.css"),
     );
+    await Deno.copyFile(
+        "assets/script.js",
+        pathTools.join(dest, "script.js"),
+    );
     await Deno.writeTextFile(
         pathTools.join(dest, "index.html"),
         rootHtml(buildGroups.map((x) => renderBuild(x, jobs)).join("")),
@@ -110,5 +178,11 @@ if (import.meta.main) {
     const { builds, jobs } = buildTree(
         await parseJobs("home/jenkins", ["Discontinued"]),
     );
+    const grouped = groupBuilds(builds);
+    grouped.sort((lhs, rhs) => {
+        const lhs2 = jobs.find((x) => x.uuid === lhs[0].job)!;
+        const rhs2 = jobs.find((x) => x.uuid === rhs[0].job)!;
+        return sortRelationship(lhs2.relationship, rhs2.relationship);
+    });
     render(groupBuilds(builds), jobs, "out");
 }

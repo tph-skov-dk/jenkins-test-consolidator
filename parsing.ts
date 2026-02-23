@@ -52,6 +52,7 @@ const BuildXml = z.object({
             }),
         }),
     }),
+    timestamp: z.coerce.number().transform((x) => new Date(x)),
 });
 const BuildFileXml = z.object({
     build: BuildXml,
@@ -107,6 +108,7 @@ export type Build = {
         iteration: number;
     } | null;
     tests: TestCase[];
+    timestamp: Date;
 };
 
 export type Job = {
@@ -216,6 +218,7 @@ async function buildFromBuildXmlPath(
                 }
                 : null,
             result: standardizeResultFormat(parsedBuild.result),
+            timestamp: parsedBuild.timestamp,
             tests,
         },
     };

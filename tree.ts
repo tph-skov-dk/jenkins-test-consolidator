@@ -18,6 +18,7 @@ export type Build = {
     children: Build[];
     result: "success" | "aborted" | "failed";
     tests: TestCase[];
+    timestamp: Date;
 };
 
 function findJobWithRelationship<T extends { relationship: string[] }>(
