@@ -1,9 +1,7 @@
-import { escape } from "@std/html";
-import { Build, buildTree, JobInfo } from "./tree2.ts";
+import { Build, buildTree, groupBuilds, JobInfo } from "./tree2.ts";
 import * as fs from "@std/fs";
 import * as pathTools from "@std/path";
 import { parseJobs, TestCase } from "./parsing.ts";
-import { on } from "node:events";
 
 function rootHtml(body: string) {
     return `
@@ -78,7 +76,7 @@ function renderTests(
 }
 
 function renderBuild(builds: Build[], jobs: JobInfo[]): string {
-    builds.sort((lhs, rhs) => lhs.iteration - rhs.iteration);
+    builds.sort((lhs, rhs) => lhs.iteration - rhs.iteration).reverse();
     const iterations = builds.map((x) => x.iteration);
     return `<table>
         <thead><tr>
@@ -91,21 +89,6 @@ function renderBuild(builds: Build[], jobs: JobInfo[]): string {
     </table>`;
 }
 
-function groupBuilds(builds: Build[]): Build[][] {
-    const map = new Map<string, Build[]>();
-    for (const build of builds) {
-        const collection = map.get(build.job) ?? [];
-        collection.push(build);
-        map.set(build.job, collection);
-    }
-    return map
-        .values()
-        .map((x) =>
-            x.toSorted((lhs, rhs) => lhs.iteration - rhs.iteration).toReversed()
-        )
-        .toArray();
-}
-
 export async function render(
     buildGroups: Build[][],
     jobs: JobInfo[],
@@ -115,7 +98,7 @@ export async function render(
     await fs.ensureDir(dest);
     await Deno.writeTextFile(pathTools.join(dest, ".gitignore"), "*");
     await Deno.copyFile(
-        "style.css",
+        "assets/style.css",
         pathTools.join(dest, "style.css"),
     );
     await Deno.writeTextFile(

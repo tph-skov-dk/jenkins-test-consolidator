@@ -1,16 +1,18 @@
 import { parseJobs } from "./parsing.ts";
-import { render } from "./render.ts";
-import { buildTree } from "./tree.ts";
+import { render } from "./render2.ts";
+import { buildTree, groupBuilds } from "./tree2.ts";
 import * as fs from "@std/fs";
 import * as path from "@std/path";
 
 if (import.meta.main) {
-    const target = Deno.args[0];
-    const out = Deno.args[1] ?? "out";
-    const skip = Deno.args[2]?.split(",") ?? "out";
+    const target = Deno.args.at(0);
+    const out = Deno.args.at(1) ?? "out";
+    const skip: string[] = Deno.args.at(2)?.split(",") ?? ["Discontinued"];
     if (!target) {
         console.warn("no target specified");
-        console.warn(`  hint: try <binary_path> <target> <output> <skip0,skip1,skip2>`);
+        console.warn(
+            `  hint: try <binary_path> <target> <output> <skip0,skip1,skip2>`,
+        );
         Deno.exit(1);
     }
     if (!await fs.exists(path.join(target, "jobs"))) {
@@ -20,7 +22,11 @@ if (import.meta.main) {
         );
         Deno.exit(1);
     }
-    await render(buildTree(await parseJobs(target, skip)), out);
+    const { builds, jobs } = buildTree(
+        await parseJobs(target, skip),
+    );
+
+    await render(groupBuilds(builds), jobs, out);
     console.warn(`rendered to '${out}'`);
     Deno.exit(0);
 }

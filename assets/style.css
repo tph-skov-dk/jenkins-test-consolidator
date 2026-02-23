@@ -13,8 +13,8 @@ body {
     font-size: 1.1rem;
 }
 
-build-table {
-    display: table;
+table {
+    width: 100%;
 }
 
 test-result {
@@ -23,6 +23,17 @@ test-result {
     width: 1em;
     height: 1em;
     line-height: 1;
+    margin: 0 auto;
+
+    &[success] {
+        background-color: #589b31;
+    }
+    &[failed] {
+        background-color: #e3170a;
+    }
+    &[skipped] {
+        background-color: #4a7096;
+    }
 }
 
 build-name {

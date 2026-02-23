@@ -132,6 +132,21 @@ function hasTests(build: Build): boolean {
     return build.children.some(hasTests);
 }
 
+export function groupBuilds(builds: Build[]): Build[][] {
+    const map = new Map<string, Build[]>();
+    for (const build of builds) {
+        const collection = map.get(build.job) ?? [];
+        collection.push(build);
+        map.set(build.job, collection);
+    }
+    return map
+        .values()
+        .map((x) =>
+            x.toSorted((lhs, rhs) => lhs.iteration - rhs.iteration).toReversed()
+        )
+        .toArray();
+}
+
 export function buildTree(parsed: ParsedJob[]) {
     const { jobs, builds } = buildJobTree(parsed);
     return { jobs, builds: builds.filter(hasTests) };
