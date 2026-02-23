@@ -162,11 +162,11 @@ export async function render(
     await fs.ensureDir(dest);
     await Deno.writeTextFile(pathTools.join(dest, ".gitignore"), "*");
     await Deno.copyFile(
-        "assets/style.css",
+        pathTools.join(import.meta.dirname!, "assets/style.css"),
         pathTools.join(dest, "style.css"),
     );
     await Deno.copyFile(
-        "assets/script.js",
+        pathTools.join(import.meta.dirname!, "assets/script.js"),
         pathTools.join(dest, "script.js"),
     );
     for (const group of buildGroups) {
