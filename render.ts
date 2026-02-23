@@ -1,4 +1,4 @@
-import { Build, buildTree, groupBuilds, JobInfo } from "./tree2.ts";
+import { Build, buildTree, groupBuilds, JobInfo } from "./tree.ts";
 import * as fs from "@std/fs";
 import * as pathTools from "@std/path";
 import { parseJobs, TestCase } from "./parsing.ts";

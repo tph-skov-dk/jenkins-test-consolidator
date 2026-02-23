@@ -1,6 +1,6 @@
 import { parseJobs } from "./parsing.ts";
-import { render } from "./render2.ts";
-import { buildTree, groupBuilds } from "./tree2.ts";
+import { render } from "./render.ts";
+import { buildTree, groupBuilds } from "./tree.ts";
 import * as fs from "@std/fs";
 import * as path from "@std/path";
 
