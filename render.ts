@@ -17,6 +17,11 @@ function rootHtml(body: string, rootPathPrefix: string) {
             </head>
             <body>
                 ${body}
+                <dialog closedby="any" id="case-details-dialog">
+                    <button id="case-details-dialog-close">Close</button>
+                    <hr>
+                    <div id="case-details-dialog-content"></div>
+                </dialog>
             </body>
         </html>
     `;
@@ -118,7 +123,7 @@ function renderTests(
             );
             if (found) {
                 work += `<test-result ${found.result} info="${
-                    escape(JSON.stringify(found.job))
+                    escape(JSON.stringify(found))
                 }"></test-result>`;
             }
             work += "</td>";
