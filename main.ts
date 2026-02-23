@@ -4,10 +4,21 @@ import { buildTree, groupBuilds } from "./tree.ts";
 import * as fs from "@std/fs";
 import * as path from "@std/path";
 
+function withSlashes(input: string): string {
+    if (!input.startsWith("/")) {
+        input = "/" + input;
+    }
+    if (!input.endsWith("/")) {
+        input = input + "/";
+    }
+    return input;
+}
+
 if (import.meta.main) {
     const target = Deno.args.at(0);
     const out = Deno.args.at(1) ?? "out";
-    const skip = Deno.args.at(2)?.split(",") ?? ["Discontinued"];
+    const rootPathPrefix = withSlashes(Deno.args.at(2) ?? "/");
+    const skip = Deno.args.at(3)?.split(",") ?? ["Discontinued"];
     if (!target) {
         console.warn("no target specified");
         console.warn(
@@ -26,7 +37,7 @@ if (import.meta.main) {
         await parseJobs(target, skip),
     );
 
-    await render(groupBuilds(builds), jobs, out);
+    await render(groupBuilds(builds), jobs, out, rootPathPrefix);
     console.warn(`rendered to '${out}'`);
     Deno.exit(0);
 }

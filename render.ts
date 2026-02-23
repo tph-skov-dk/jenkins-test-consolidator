@@ -4,7 +4,7 @@ import * as pathTools from "@std/path";
 import { parseJobs, TestCase } from "./parsing.ts";
 import { escape } from "@std/html";
 
-function rootHtml(body: string) {
+function rootHtml(body: string, rootPathPrefix: string) {
     return `
         <!DOCTYPE html>
         <html lang="en">
@@ -12,8 +12,8 @@ function rootHtml(body: string) {
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Test results</title>
-                <link href="/style.css" rel="stylesheet">
-                <script defer src="/script.js"></script>
+                <link href="${rootPathPrefix}style.css" rel="stylesheet">
+                <script defer src="${rootPathPrefix}script.js"></script>
             </head>
             <body>
                 ${body}
@@ -157,6 +157,7 @@ export async function render(
     buildGroups: Build[][],
     jobs: JobInfo[],
     dest: string,
+    rootPathPrefix: string,
 ) {
     await fs.ensureDir(dest);
     await Deno.writeTextFile(pathTools.join(dest, ".gitignore"), "*");
@@ -183,20 +184,23 @@ export async function render(
             "index.html",
         );
         await fs.ensureFile(path);
-        await Deno.writeTextFile(path, rootHtml(renderBuild(group, jobs)));
+        await Deno.writeTextFile(
+            path,
+            rootHtml(renderBuild(group, jobs), rootPathPrefix),
+        );
     }
     const links = buildGroups.map(([group]) => {
         const rootJob = jobs.find((job) => job.uuid === group.job);
         if (!rootJob) {
             throw new Error("unreachable");
         }
-        return `<li><a href="/${rootJob.relationship.join(".")}">${
+        return `<li><a href="${rootPathPrefix}${
             rootJob.relationship.join(".")
-        }</a></li>`;
+        }">${rootJob.relationship.join(".")}</a></li>`;
     });
     await Deno.writeTextFile(
         pathTools.join(dest, "index.html"),
-        rootHtml(`<ul>${links.join("")}</ul>`),
+        rootHtml(`<ul>${links.join("")}</ul>`, rootPathPrefix),
     );
 }
 
@@ -210,5 +214,5 @@ if (import.meta.main) {
         const rhs2 = jobs.find((x) => x.uuid === rhs[0].job)!;
         return sortRelationship(lhs2.relationship, rhs2.relationship);
     });
-    render(groupBuilds(builds), jobs, "out");
+    render(groupBuilds(builds), jobs, "out", "/");
 }
