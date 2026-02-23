@@ -52,9 +52,9 @@ function renderJobTestGroup(
     tests: TestCaseWithJob[][],
     jobs: JobInfo[],
 ): string {
-    let work = `<tr scope="row"><td><job-collapse-toggle job="${job}">${
+    let work = `<tr scope="row"><td job-collapse-toggle job="${job}">${
         jobs.find((x) => x.uuid === job)!.relationship.join(".")
-    }</job-collapse-toggle></td>`;
+    }</td>`;
     for (let i = 0; i < tests.length; ++i) {
         work += "<td>";
         const relatedTests = tests[i].filter((x) => x.job === job);
@@ -97,7 +97,11 @@ function renderTests(
             testName: x.testName,
             job: x.job,
         })),
-    ).toSorted((lhs, rhs) => lhs.job.localeCompare(rhs.job));
+    ).toSorted((lhs, rhs) => {
+        const lhs2 = jobs.find((x) => x.uuid === lhs.job)!;
+        const rhs2 = jobs.find((x) => x.uuid === rhs.job)!;
+        return sortRelationship(lhs2.relationship, rhs2.relationship);
+    });
 
     const ret = [];
     let mostRecentJob = "";

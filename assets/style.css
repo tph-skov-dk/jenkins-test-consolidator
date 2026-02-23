@@ -66,6 +66,7 @@ table {
     border-collapse: collapse;
 }
 
-job-collapse-toggle {
+td[job-collapse-toggle]:hover {
+    background-color: rgba(255, 255, 255, 0.05);
     cursor: pointer;
 }

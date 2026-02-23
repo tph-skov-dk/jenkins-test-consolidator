@@ -14,7 +14,7 @@ function expand(job) {
 }
 
 function main() {
-    const toggle = document.querySelectorAll("job-collapse-toggle");
+    const toggle = document.querySelectorAll("[job-collapse-toggle]");
     for (const button of toggle) {
         const initialHtml = button.innerHTML;
         const job = button.getAttribute("job");
