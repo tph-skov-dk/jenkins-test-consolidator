@@ -22,7 +22,7 @@ if (import.meta.main) {
     if (!target) {
         console.warn("no target specified");
         console.warn(
-            `  hint: try <binary_path> <target> <output> <skip0,skip1,skip2>`,
+            `  hint: try <binary_path> <target> <output> <root path> <skip0,skip1,skip2>`,
         );
         Deno.exit(1);
     }
