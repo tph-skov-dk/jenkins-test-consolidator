@@ -12,8 +12,8 @@ function rootHtml(body: string) {
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Test results</title>
-                <link href="style.css" rel="stylesheet">
-                <script defer src="script.js"></script>
+                <link href="/style.css" rel="stylesheet">
+                <script defer src="/script.js"></script>
             </head>
             <body>
                 ${body}
@@ -168,9 +168,35 @@ export async function render(
         "assets/script.js",
         pathTools.join(dest, "script.js"),
     );
+    for (const group of buildGroups) {
+        const rootJob = jobs.find((x) => x.uuid === group[0].job);
+        if (!rootJob) {
+            throw new Error("unreachable");
+        }
+        const isSameJob = group.every((x) => x.job === rootJob.uuid);
+        if (!isSameJob) {
+            throw new Error("expected builds to have same root job");
+        }
+        const path = pathTools.join(
+            dest,
+            rootJob.relationship.join("."),
+            "index.html",
+        );
+        await fs.ensureFile(path);
+        await Deno.writeTextFile(path, rootHtml(renderBuild(group, jobs)));
+    }
+    const links = buildGroups.map(([group]) => {
+        const rootJob = jobs.find((job) => job.uuid === group.job);
+        if (!rootJob) {
+            throw new Error("unreachable");
+        }
+        return `<li><a href="/${rootJob.relationship.join(".")}">${
+            rootJob.relationship.join(".")
+        }</a></li>`;
+    });
     await Deno.writeTextFile(
         pathTools.join(dest, "index.html"),
-        rootHtml(buildGroups.map((x) => renderBuild(x, jobs)).join("")),
+        rootHtml(`<ul>${links.join("")}</ul>`),
     );
 }
 

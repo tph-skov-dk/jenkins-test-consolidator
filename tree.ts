@@ -133,6 +133,21 @@ function hasTests(build: Build): boolean {
     return build.children.some(hasTests);
 }
 
+function buildGroupComplexity(builds: Build[]): number {
+    function buildComplexity(build: Build): number {
+        const children = buildGroupComplexity(build.children);
+        return build.tests.length + children;
+    }
+    return builds.map(buildComplexity).reduce((acc, c) => acc + c, 0) *
+        builds.length;
+}
+
+function sortBuildGroup(groups: Build[][]): Build[][] {
+    return groups.sort((lhs, rhs) =>
+        buildGroupComplexity(lhs) - buildGroupComplexity(rhs)
+    ).reverse();
+}
+
 export function groupBuilds(builds: Build[]): Build[][] {
     const map = new Map<string, Build[]>();
     for (const build of builds) {
@@ -140,12 +155,13 @@ export function groupBuilds(builds: Build[]): Build[][] {
         collection.push(build);
         map.set(build.job, collection);
     }
-    return map
+    const groups = map
         .values()
         .map((x) =>
             x.toSorted((lhs, rhs) => lhs.iteration - rhs.iteration).toReversed()
         )
         .toArray();
+    return sortBuildGroup(groups);
 }
 
 export function buildTree(parsed: ParsedJob[]) {
