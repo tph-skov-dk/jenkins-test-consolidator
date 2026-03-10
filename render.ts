@@ -149,10 +149,10 @@ function renderBuild(builds: Build[], jobs: JobInfo[]): string {
         jobs.find((x) => x.uuid === builds[0].job)?.relationship.join(".")
     }</th>
             ${
-        builds.map(({ timestamp, iteration }) =>
+        builds.map(({ timestamp, iteration, gitOrigin }) =>
             `<th scope="col"><build-name>Build ${iteration}, ${
                 formatDate(timestamp)
-            }</build-name></th>`
+            } ${gitOrigin ? `(${gitOrigin})` : ""}</build-name></th>`
         ).join("")
     }
         </tr></thead>

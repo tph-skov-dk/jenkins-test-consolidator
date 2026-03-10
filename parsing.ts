@@ -5,6 +5,10 @@ import * as xml from "@libs/xml";
 
 const StringBool = z.literal(["true", "false"]).transform((x) => x === "true");
 
+const ArrayOrSingle = <T extends z.core.SomeType>(obj: T) => {
+    return z.array(obj).or(obj).transform((x) => [x].flat());
+};
+
 const JunitXmlTestBaseCase = z.object({
     duration: z.coerce.number(),
     testName: z.string(),
@@ -38,6 +42,13 @@ const JunitXmlResult = z.object({
     }),
 });
 
+const BuildsByBranchNameEntry = z.object({
+    "string": z.string(),
+    "hudson.plugins.git.util.Build": z.object({
+        hudsonBuildNumber: z.coerce.number().default(-1),
+    }),
+});
+
 const BuildXml = z.object({
     result: z.literal(["SUCCESS", "ABORTED", "FAILURE"]),
     actions: z.object({
@@ -51,6 +62,11 @@ const BuildXml = z.object({
                 }),
             }),
         }),
+        "hudson.plugins.git.util.BuildData": z.object({
+            buildsByBranchName: z.object({
+                entry: ArrayOrSingle(BuildsByBranchNameEntry),
+            }),
+        }).optional(),
     }),
     timestamp: z.coerce.number().transform((x) => new Date(x)),
 });
@@ -109,6 +125,7 @@ export type Build = {
     } | null;
     tests: TestCase[];
     timestamp: Date;
+    gitOrigin: string | null;
 };
 
 export type Job = {
@@ -170,13 +187,19 @@ async function testCasesFromJunitXmlPath(
     });
 }
 
+function stripStart(target: string, strip: string): string {
+    if (target.startsWith(strip)) {
+        return target.slice(strip.length);
+    }
+    return target;
+}
+
 async function buildFromBuildXmlPath(
     buildXmlPath: string,
 ): Promise<{ iteration: number; build: Build }> {
     const parsed = BuildFileXml.parse(
         xml.parse(await Deno.readTextFile(buildXmlPath)),
     );
-
     const parsedBuild = parsed["build"] ?? parsed["matrix-build"];
     const cause = parsedBuild.actions["hudson.model.CauseAction"]
         .causeBag
@@ -195,6 +218,23 @@ async function buildFromBuildXmlPath(
         }
     }
 
+    const buildIteration = buildIterationFromPath(buildXmlPath);
+
+    const gitOrigin = parsedBuild.actions["hudson.plugins.git.util.BuildData"]
+        ?.buildsByBranchName
+        .entry.map((x) => {
+            return ({
+                buildNumber:
+                    x["hudson.plugins.git.util.Build"].hudsonBuildNumber,
+                origin: stripStart(
+                    x.string,
+                    "refs/remotes/origin/",
+                ),
+            });
+        })
+        .filter((x) => x.buildNumber === buildIteration)
+        .at(0)?.origin ?? null;
+
     function standardizeResultFormat(
         result: z.infer<typeof BuildXml>["result"],
     ): Build["result"] {
@@ -209,7 +249,7 @@ async function buildFromBuildXmlPath(
     }
 
     return {
-        iteration: buildIterationFromPath(buildXmlPath),
+        iteration: buildIteration,
         build: {
             upstream: cause !== undefined
                 ? {
@@ -220,6 +260,7 @@ async function buildFromBuildXmlPath(
             result: standardizeResultFormat(parsedBuild.result),
             timestamp: parsedBuild.timestamp,
             tests,
+            gitOrigin,
         },
     };
 }
@@ -228,11 +269,11 @@ function formatRelationship(root: string, path: string): string[] {
     const ret = [];
     const split = path.slice(root.length).split(/[\\/]/);
     for (let i = 0; i < split.length; ++i) {
-        if (split[i] !== "jobs") {
+        ret.push(split[i]);
+        i += 1;
+        if (split[i] !== "jobs" && split[i] !== undefined) {
             throw new Error(`expected 'jobs', got '${split[i]}'`);
         }
-        i += 1;
-        ret.push(split[i]);
     }
     return ret;
 }

@@ -19,6 +19,7 @@ export type Build = {
     result: "success" | "aborted" | "failed";
     tests: TestCase[];
     timestamp: Date;
+    gitOrigin: string | null;
 };
 
 function findJobWithRelationship<T extends { relationship: string[] }>(

@@ -1,7 +1,6 @@
 import { parseJobs } from "./parsing.ts";
 import { render } from "./render.ts";
 import { buildTree, groupBuilds } from "./tree.ts";
-import * as fs from "@std/fs";
 import * as path from "@std/path";
 
 function withSlashes(input: string): string {
@@ -26,10 +25,10 @@ if (import.meta.main) {
         );
         Deno.exit(1);
     }
-    if (!await fs.exists(path.join(target, "jobs"))) {
-        console.warn(`expected '${target}' to have a jobs/ folder`);
+    if (path.basename(target) !== "jobs") {
+        console.warn(`expected '${target}' to be a jobs/ folder`);
         console.warn(
-            `  hint: try specifying target as jenkins user working dir`,
+            `  hint: try specifying target as <jenkins user working dir>/jobs`,
         );
         Deno.exit(1);
     }
