@@ -41,6 +41,7 @@ if (import.meta.main) {
     const existing = await cache.load(cacheDir);
     const merged = cache.merge(existing, builtTree);
     await cache.save(cacheDir, merged);
+    console.warn(`cached at '${cacheDir}'`);
 
     await render(merged.builds, merged.jobs, out, rootPathPrefix);
     console.warn(`rendered to '${out}'`);
