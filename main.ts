@@ -1,7 +1,8 @@
 import { parseJobs } from "./parsing.ts";
 import { render } from "./render.ts";
-import { buildTree, groupBuilds } from "./tree.ts";
+import { buildTree } from "./tree.ts";
 import * as path from "@std/path";
+import * as cache from "./cache.ts";
 
 function withSlashes(input: string): string {
     if (!input.startsWith("/")) {
@@ -15,13 +16,14 @@ function withSlashes(input: string): string {
 
 if (import.meta.main) {
     const target = Deno.args.at(0);
-    const out = Deno.args.at(1) ?? "out";
-    const rootPathPrefix = withSlashes(Deno.args.at(2) ?? "/");
-    const skip = Deno.args.at(3)?.split(",") ?? ["Discontinued"];
-    if (!target) {
-        console.warn("no target specified");
+    const cacheDir = Deno.args.at(1);
+    const out = Deno.args.at(2) ?? "out";
+    const rootPathPrefix = withSlashes(Deno.args.at(3) ?? "/");
+    const skip = Deno.args.at(4)?.split(",") ?? ["Discontinued"];
+    if (!target || !cacheDir) {
+        console.warn("no target or cache dir specified");
         console.warn(
-            `  hint: try <binary_path> <target> <output> <root path> <skip0,skip1,skip2>`,
+            `  hint: try <binary_path> <target> <cache dir> <output> <root path> <skip0,skip1,skip2>`,
         );
         Deno.exit(1);
     }
@@ -32,11 +34,15 @@ if (import.meta.main) {
         );
         Deno.exit(1);
     }
-    const { builds, jobs } = buildTree(
+
+    const builtTree = await buildTree(
         await parseJobs(target, skip),
     );
+    const existing = await cache.load(cacheDir);
+    const merged = cache.merge(existing, builtTree);
+    await cache.save(cacheDir, merged);
 
-    await render(groupBuilds(builds), jobs, out, rootPathPrefix);
+    await render(merged.builds, merged.jobs, out, rootPathPrefix);
     console.warn(`rendered to '${out}'`);
     Deno.exit(0);
 }

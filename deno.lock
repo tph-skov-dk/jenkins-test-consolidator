@@ -2,6 +2,7 @@
   "version": "5",
   "specifiers": {
     "jsr:@libs/xml@^7.0.3": "7.0.3",
+    "jsr:@std/encoding@^1.0.10": "1.0.10",
     "jsr:@std/fs@^1.0.22": "1.0.22",
     "jsr:@std/html@^1.0.5": "1.0.5",
     "jsr:@std/internal@^1.0.12": "1.0.12",
@@ -11,6 +12,9 @@
   "jsr": {
     "@libs/xml@7.0.3": {
       "integrity": "4caad75dfec0a4dd4ad5dc87dc559d9aa25ac53f17373923a9cd006f6c8d42e6"
+    },
+    "@std/encoding@1.0.10": {
+      "integrity": "8783c6384a2d13abd5e9e87a7ae0520a30e9f56aeeaa3bdf910a3eaaf5c811a1"
     },
     "@std/fs@1.0.22": {
       "integrity": "de0f277a58a867147a8a01bc1b181d0dfa80bfddba8c9cf2bacd6747bcec9308",
@@ -40,6 +44,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@libs/xml@^7.0.3",
+      "jsr:@std/encoding@^1.0.10",
       "jsr:@std/fs@^1.0.22",
       "jsr:@std/html@^1.0.5",
       "jsr:@std/path@^1.1.4",

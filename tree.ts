@@ -1,19 +1,26 @@
-import {
-    Build as ParsedBuild,
-    Job as ParsedJob,
-    parseJobs,
-    TestCase,
-} from "./parsing.ts";
+import { Build as ParsedBuild, Job as ParsedJob, TestCase } from "./parsing.ts";
 
-type Uuid = ReturnType<typeof crypto.randomUUID>;
+import { encodeHex } from "@std/encoding";
+
+export type Hash = Awaited<ReturnType<typeof hashRelationship>>;
+
+async function hashRelationship(relationship: Relationship): Promise<string> {
+    // i.e. ["SDK-Tests"].join("-") and ["SDK", "Tests"].join("-") both produce "SDK-Tests"
+    const magicSeperatorToEnsureNoAccidentalOverlap = "&/(%)¤(#)%(#";
+    const asBytes = new TextEncoder().encode(relationship.join(
+        magicSeperatorToEnsureNoAccidentalOverlap,
+    ));
+    return encodeHex(await crypto.subtle.digest("SHA-1", asBytes));
+}
+export type Relationship = string[];
 
 export type JobInfo = {
-    uuid: Uuid;
+    hash: Hash;
     relationship: string[];
 };
 
 export type Build = {
-    job: Uuid;
+    job: Hash;
     iteration: number;
     children: Build[];
     result: "success" | "aborted" | "failed";
@@ -41,7 +48,7 @@ function findJobWithRelationship<T extends { relationship: string[] }>(
 
 function findBuild(
     builds: Build[],
-    job: Uuid,
+    job: Hash,
     iteration: number,
 ): Build | undefined {
     for (const build of builds) {
@@ -56,20 +63,23 @@ function findBuild(
     return undefined;
 }
 
-function buildJobTree(
+async function buildJobTree(
     input: ParsedJob[],
-): { jobs: JobInfo[]; builds: Build[] } {
-    const jobData = input.map((x) => ({ ...x, uuid: crypto.randomUUID() }));
+): Promise<{ jobs: JobInfo[]; builds: Build[] }> {
+    const jobData = await Promise.all(input.map(async (x) => ({
+        ...x,
+        hash: await hashRelationship(x.relationship),
+    })));
     const jobs: JobInfo[] = jobData.map((x) => ({
-        uuid: x.uuid,
+        hash: x.hash,
         relationship: x.relationship,
     }));
     const builds: Build[] = [];
     const unpairedBuilds: (ParsedBuild & Build)[] = jobData
-        .flatMap(({ uuid, builds }) =>
+        .flatMap(({ hash, builds }) =>
             Object.entries(builds).map(([iteration, build]) => ({
                 iteration: parseInt(iteration),
-                job: uuid,
+                job: hash,
                 children: [],
                 ...build,
             }))
@@ -84,13 +94,13 @@ function buildJobTree(
             continue;
         }
         const jobName = jobs
-            .find((x) => x.uuid === build.job)
+            .find((x) => x.hash === build.job)
             ?.relationship;
         const upstreamJob = findJobWithRelationship(
             jobs,
             build.upstream.project,
         )
-            ?.uuid;
+            ?.hash;
         if (!upstreamJob) {
             console.warn(
                 `[a] build '${
@@ -149,7 +159,7 @@ function sortBuildGroup(groups: Build[][]): Build[][] {
     ).reverse();
 }
 
-export function groupBuilds(builds: Build[]): Build[][] {
+function groupBuilds(builds: Build[]): Build[][] {
     const map = new Map<string, Build[]>();
     for (const build of builds) {
         const collection = map.get(build.job) ?? [];
@@ -165,11 +175,7 @@ export function groupBuilds(builds: Build[]): Build[][] {
     return sortBuildGroup(groups);
 }
 
-export function buildTree(parsed: ParsedJob[]) {
-    const { jobs, builds } = buildJobTree(parsed);
-    return { jobs, builds: builds.filter(hasTests) };
-}
-
-if (import.meta.main) {
-    console.log(buildTree(await parseJobs("home/jenkins", [])));
+export async function buildTree(parsed: ParsedJob[]) {
+    const { jobs, builds } = await buildJobTree(parsed);
+    return { jobs, builds: groupBuilds(builds.filter(hasTests)) };
 }
